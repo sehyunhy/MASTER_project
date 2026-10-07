@@ -21,7 +21,7 @@ S1–S4는 요청된 Williams 순서입니다. 네 조건이 각 위치에 한 �
 
 1. Node.js 20 이상과 npm을 설치합니다.
 2. 이 폴더에서 `npm install`을 실행합니다.
-3. `.env.example`을 `.env.local`로 복사하고 Supabase URL, anon key, service-role key를 입력합니다. `ANTHROPIC_API_KEY`는 live demo를 쓸 때만 입력합니다.
+3. `.env.example`을 `.env.local`로 복사하고 Supabase URL, publishable key, server secret key를 입력합니다. `ANTHROPIC_API_KEY`는 live demo를 쓸 때만 입력합니다.
 4. Supabase SQL Editor에서 `0001_initial.sql`, `0002_behavioral_logging.sql`, `0003_product_catalog.sql`을 순서대로 실행합니다.
 5. `npm run seed:assignments`로 실참가자 슬롯 40개를 만들거나, `PARTICIPANT_ROLE=recipient npm run seed:assignments`로 40명을 관찰자 역할로 준비합니다. 다시 실행하면 같은 P코드의 배정은 upsert됩니다. 실제 참여 시작 후에는 배정을 바꾸지 마세요.
 6. `npm run dev`를 실행하고 [http://localhost:3000](http://localhost:3000)을 엽니다. Admin은 `/admin`입니다.
@@ -44,9 +44,10 @@ S1–S4는 요청된 Williams 순서입니다. 네 조건이 각 위치에 한 �
 
 | Variable | Use |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public Supabase anon key (no browser DB policy is granted) |
-| `SUPABASE_SERVICE_ROLE_KEY` | server and seed scripts only; never expose to client |
+| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SECRET_KEY` | current server key; server and seed scripts only, never expose to client |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | current public browser key; RLS still applies |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | legacy fallbacks for existing projects |
 | `ANTHROPIC_API_KEY` | optional, server-only Claude live demo |
 | `ANTHROPIC_MODEL` | default `claude-sonnet-5` |
 | `EXPERIMENT_CANDIDATE_MODE` | `controlled` default or `live` demo |
@@ -62,8 +63,8 @@ Claude's current model identifier and Messages API usage are documented by [Anth
 2. Create a Supabase project and execute the SQL migration above.
 3. Locally set `.env.local`, then run `npm run seed:assignments`. Run `npm run seed:mock` only in a development database.
 4. In Vercel, import the repository and set the Root Directory to `gift-experiment` if the repository root contains the parent folder.
-5. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and a strong `ADMIN_PASSWORD` under Vercel Project → Settings → Environment Variables. Add `ANTHROPIC_API_KEY` only if the demo mode is deliberately enabled. Keep `EXPERIMENT_CANDIDATE_MODE=controlled` for research sessions.
-6. Deploy. For code changes Vercel redeploys from the connected Git branch.
+5. Connect the Supabase Marketplace project or add `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and a strong `ADMIN_PASSWORD` under Vercel Project → Settings → Environment Variables. Add `ANTHROPIC_API_KEY` only if the demo mode is deliberately enabled. Keep `EXPERIMENT_CANDIDATE_MODE=controlled` for research sessions.
+6. Deploy. Redeploy after changing environment variables so server functions pick up the new values. For code changes Vercel redeploys from the connected Git branch.
 7. Verify `/`, `/start`, `/admin`, database insert and CSV export using a test assignment in a staging Supabase project. Do not use the production participant list for QA.
 
 ## Validity and deployment caveats

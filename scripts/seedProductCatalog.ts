@@ -57,14 +57,21 @@ if (rows.length !== 300 || new Set(rows.map(row => row.sku)).size !== 300 || new
   throw new Error("Product catalog must contain exactly 300 unique items.");
 }
 
-const db = dbClient();
-const { error: deleteError } = await db.from("product_catalog").delete().eq("source", "synthetic_qa");
-if (deleteError) throw deleteError;
-for (let offset = 0; offset < rows.length; offset += 250) {
-  const { error } = await db.from("product_catalog").insert(rows.slice(offset, offset + 250));
-  if (error) throw error;
+async function main() {
+  const db = dbClient();
+  const { error: deleteError } = await db.from("product_catalog").delete().eq("source", "synthetic_qa");
+  if (deleteError) throw deleteError;
+  for (let offset = 0; offset < rows.length; offset += 250) {
+    const { error } = await db.from("product_catalog").insert(rows.slice(offset, offset + 250));
+    if (error) throw error;
+  }
+  const { count, error: countError } = await db.from("product_catalog").select("id", { count: "exact", head: true }).eq("source", "synthetic_qa");
+  if (countError) throw countError;
+  if (count !== 300) throw new Error(`Expected 300 catalog rows; found ${count ?? 0}.`);
+  console.log(`Seeded ${count} synthetic QA product catalog items (all is_mock=true).`);
 }
-const { count, error: countError } = await db.from("product_catalog").select("id", { count: "exact", head: true }).eq("source", "synthetic_qa");
-if (countError) throw countError;
-if (count !== 300) throw new Error(`Expected 300 catalog rows; found ${count ?? 0}.`);
-console.log(`Seeded ${count} synthetic QA product catalog items (all is_mock=true).`);
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

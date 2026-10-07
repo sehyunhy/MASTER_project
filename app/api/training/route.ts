@@ -3,7 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { logEvent } from "@/lib/events";
 import { participantSessionMatches } from "@/lib/auth/participant";
 
-const correct = ["yes", "ai", "no", "user"];
+// Must match the four radio groups in Training.tsx in display order:
+// guided questions = yes, autonomous generation = no,
+// participant chooses = user, AI chooses = ai.
+const correct = ["yes", "no", "user", "ai"];
 export async function POST(request: Request) {
   const { participantId, answers } = await request.json();
   if (typeof participantId !== "string" || !Array.isArray(answers) || answers.length !== 4) return NextResponse.json({ error: "훈련 응답을 확인해 주세요." }, { status: 400 });

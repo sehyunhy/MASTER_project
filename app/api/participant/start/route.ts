@@ -10,8 +10,12 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "참가자 코드 형식을 확인해 주세요." }, { status: 400 });
   try {
     const db = supabaseAdmin();
-    const { data: p, error } = await db.from("participants").select("*").eq("participant_code", parsed.data.participantCode).eq("role", parsed.data.role).eq("is_mock", false).single();
-    if (error || !p) return NextResponse.json({ error: "등록되지 않은 코드 또는 참여 방식입니다. 연구자에게 확인해 주세요." }, { status: 404 });
+    const { data: p, error } = await db.from("participants").select("*").eq("participant_code", parsed.data.participantCode).eq("role", parsed.data.role).eq("is_mock", false).maybeSingle();
+    if (error) {
+      console.error("Participant lookup failed", { code: error.code, message: error.message });
+      return NextResponse.json({ error: "참가자 정보를 확인하지 못했습니다. 서버 로그를 확인해 주세요." }, { status: 500 });
+    }
+    if (!p) return NextResponse.json({ error: "등록되지 않은 코드 또는 참여 방식입니다. 연구자에게 확인해 주세요." }, { status: 404 });
     if (p.status === "completed" || p.status === "withdrawn") return NextResponse.json({ error: "이 참가자 코드는 완료되었거나 중단 처리되었습니다." }, { status: 409 });
     const now = new Date().toISOString();
     if (!p.started_at) await db.from("participants").update({ status: "started", started_at: now }).eq("id", p.id);

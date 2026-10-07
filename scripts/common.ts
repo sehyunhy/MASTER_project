@@ -5,8 +5,10 @@ import { createClient } from "@supabase/supabase-js";
 import { PROFILES, CANDIDATES, EXPERIMENT } from "../config/experiment";
 
 export function dbClient() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Set Supabase values in .env.local first.");
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Set Supabase URL and server secret key in .env.local first.");
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 export async function seedFixtures(db: ReturnType<typeof dbClient>) {
   const seqRows = Object.entries(EXPERIMENT.sequences).map(([id,s])=>({id,sequence_name:id,position_1:s[0],position_2:s[1],position_3:s[2],position_4:s[3],version:EXPERIMENT.sequenceVersion}));
