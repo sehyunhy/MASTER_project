@@ -12,7 +12,8 @@ const PHASES = new Set(["criteria","candidates","comparison"]);
 function responseForError(error: any) {
   const message=String(error?.message??error);
   const shortage=message.includes("Not enough active catalog products")||message.includes("적합한 실제 상품")||message.includes("APPROVED_STIMULUS_REQUIRED");
-  const status=shortage?409:message.includes("ANOTHER_TAB_ACTIVE")?409:message.includes("MIN_EXPOSURE_NOT_MET")?409:message.includes("ACTOR_NOT_ALLOWED")?403:message.includes("PHASE_MISMATCH")?409:message.includes("CONTENT_NOT_ACTIVE")?409:500;
+  const claudeNotConfigured=message.includes("Claude API 환경변수 ANTHROPIC_API_KEY");
+  const status=shortage?409:claudeNotConfigured?503:message.includes("ANOTHER_TAB_ACTIVE")?409:message.includes("MIN_EXPOSURE_NOT_MET")?409:message.includes("ACTOR_NOT_ALLOWED")?403:message.includes("PHASE_MISMATCH")?409:message.includes("CONTENT_NOT_ACTIVE")?409:500;
   const publicMessage=message.includes("MIN_EXPOSURE_NOT_MET")?"이 단계 내용을 최소 30초 동안 확인한 뒤 진행할 수 있습니다."
     :message.includes("ANOTHER_TAB_ACTIVE")?"다른 탭에서 연구가 진행 중입니다. 그 탭으로 돌아가 주세요."
     :message.includes("PHASE_MISMATCH")?"현재 연구 단계가 갱신되었습니다. 최신 상태를 불러옵니다."
@@ -21,6 +22,7 @@ function responseForError(error: any) {
     :message.includes("CONTENT_NOT_READY")?"화면 내용을 표시한 뒤 다시 시도해 주세요."
     :message.includes("CONTENT_NOT_ACTIVE")?"화면 연결을 확인해 주세요. 화면이 활성 상태일 때 다시 진행할 수 있습니다."
     :shortage?"이 프로필의 검토된 실제 상품 또는 동결된 관찰 자극이 부족합니다. 연구자가 상품 자료를 보완해야 합니다."
+    :claudeNotConfigured?"Claude 연결 설정이 완료되지 않았습니다. 연구자가 Vercel의 ANTHROPIC_API_KEY를 확인해 주세요."
     :"연구 단계를 저장하지 못했습니다.";
   return NextResponse.json({error:publicMessage,code:message.split(" ")[0]},{status});
 }
@@ -155,6 +157,22 @@ export async function POST(request:Request) {
         actor=observing?(humanDecision?"simulated_giver":"agent"):(humanDecision?"human":"agent");
       }
       if(typeof body.tabId!=="string")return NextResponse.json({error:"화면 세션을 확인할 수 없습니다."},{status:400});
+      let preparedIntroduction:string|undefined;
+      if(phase==="criteria"){
+        const {data:phaseExposure,error:phaseExposureError}=await db.from("trial_phase_exposures")
+          .select("accumulated_ms,active_tab_id,lease_until,last_heartbeat_at")
+          .eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
+        if(phaseExposureError)throw phaseExposureError;
+        if(!phaseExposure||Number(phaseExposure.accumulated_ms)<EXPERIMENT.minimumPhaseExposureMs)throw new Error("MIN_EXPOSURE_NOT_MET");
+        const now=Date.now();
+        if(phaseExposure.active_tab_id!==body.tabId||!phaseExposure.lease_until||Date.parse(phaseExposure.lease_until)<now
+          ||!phaseExposure.last_heartbeat_at||Date.parse(phaseExposure.last_heartbeat_at)<now-5000)throw new Error("CONTENT_NOT_ACTIVE");
+        // Keep a failed catalog lookup or Claude call in criteria, where it can be retried safely.
+        // The preview uses the same filters and ranking as the persisted candidate generation.
+        const prepared=await generateTrialCandidates(db,trial.id,{previewOnly:true});
+        if(observing&&prepared.stimulus?.id!==stimulus?.id)throw new Error("APPROVED_STIMULUS_REQUIRED");
+        preparedIntroduction=observing?stimulus.transcript.candidate_agent:await composeCandidateIntroduction(prepared.candidates);
+      }
       const {data:transition,error:transitionError}=await db.rpc("advance_trial_phase",{p_trial_id:trial.id,p_expected_phase:phase,p_actor:actor,p_tab_id:body.tabId});
       if(transitionError)throw transitionError;
       if(transition?.idempotent)return NextResponse.json({...transition});
@@ -178,9 +196,8 @@ export async function POST(request:Request) {
         await saveEvent(context,"search_completed","candidates","agent",{candidateCount:generated.candidates.length,candidateSetId:generated.candidateSetId});
         await saveEvent(context,"candidate_set_changed","candidates","agent",{candidateSetId:generated.candidateSetId,candidateSetHash:generated.candidateSetHash,stimulusVersion:stimulus?.version??1},undefined,undefined,"candidate-set:"+trial.id);
         await saveEvent(context,"agent_task_completed","candidates","agent",{taskId:"compose_candidates",candidateCount:generated.candidates.length,candidateSetId:generated.candidateSetId});
-        let intro:string;
-        try{intro=observing?stimulus.transcript.candidate_agent:await composeCandidateIntroduction(generated.candidates);}
-        catch(e){await saveEvent(context,(e as Error).message.includes("DB 후보 이외")?"invalid_product_rejected":"error_occurred","candidates","agent",{reason:(e as Error).message});throw e;}
+        const intro=preparedIntroduction;
+        if(!intro)throw new Error("CANDIDATES_NOT_READY");
         if(!observing){await saveEvent(context,"tool_called","candidates","agent",{tool:"present_recommendation"});await saveEvent(context,"tool_result_returned","candidates","agent",{tool:"present_recommendation"});}
         await storeTranscriptMessage(db,{trialId:trial.id,phase:"candidates",actorType:"agent",messageType:"product_cards",content:intro,payload:{candidates:generated.candidates,candidateSetHash:generated.candidateSetHash},idempotencyKey:"catalog-candidates-v2",eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
       } else if(phase==="candidates") {

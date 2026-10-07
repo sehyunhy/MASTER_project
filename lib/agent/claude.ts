@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { anthropicModel, shortResponseOptions } from "@/lib/agent/model";
 
 const intentSchema=z.object({
   intent:z.enum(["criteria_update","search_request","compare_request","explain","final_choice","clarify"]),
@@ -12,14 +13,14 @@ const intentSchema=z.object({
 export type MessageIntent=z.infer<typeof intentSchema>;
 
 function client() {
-  if(!process.env.ANTHROPIC_API_KEY||!process.env.ANTHROPIC_MODEL)throw new Error("Claude API 환경변수 ANTHROPIC_API_KEY와 ANTHROPIC_MODEL을 설정해 주세요.");
-  return {api:new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY}),model:process.env.ANTHROPIC_MODEL};
+  if(!process.env.ANTHROPIC_API_KEY)throw new Error("Claude API 환경변수 ANTHROPIC_API_KEY를 설정해 주세요.");
+  return {api:new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY}),model:anthropicModel()};
 }
 
 export async function interpretMessage(input:{text:string;phase:string;condition:string;allowedCategories:string[];allowedTags:string[]}):Promise<MessageIntent>{
   const {api,model}=client();
   const response=await api.messages.create({
-    model,max_tokens:350,temperature:0,
+    model,max_tokens:350,...shortResponseOptions(model),
     system:"You classify a Korean gift-shopping utterance for a controlled experiment. Use only explicitly mentioned preferences; never infer demographics or alter scenario/budget. A standalone mention of 실용성, 취향 적합성, or 개인적 의미 is a criteria_update with that selection_priority, even if no product tag is available. final_choice requires an unambiguous ordinal 1-3. A request to compare is compare_request; a request to find/recommend candidates is search_request. If ambiguous, clarify. Return exactly one interpret_message tool call.",
     messages:[{role:"user",content:JSON.stringify(input)}],
     tools:[{name:"interpret_message",description:"Classify intent and explicit filters",input_schema:{type:"object",properties:{intent:{type:"string",enum:["criteria_update","search_request","compare_request","explain","final_choice","clarify"]},selected_category:{type:["string","null"]},preference_tags:{type:"array",items:{type:"string"}},selection_priority:{type:["string","null"],enum:["취향 적합성","실용성","개인적 의미",null]},final_ordinal:{type:["integer","null"]},clarification:{type:["string","null"]}},required:["intent","selected_category","preference_tags","selection_priority","final_ordinal","clarification"]}}],
@@ -51,7 +52,7 @@ export async function explainWithCatalogTools(input:{db:any;trialId:string;profi
   const messages:any[]=[{role:"user",content:input.question}];
   const toolCalls:string[]=[];
   for(let round=0;round<3;round++){
-    const response:any=await api.messages.create({model,max_tokens:500,temperature:0,system,messages,tools,tool_choice:round===0?{type:"any"}:{type:"auto"}});
+    const response:any=await api.messages.create({model,max_tokens:500,...shortResponseOptions(model),system,messages,tools,tool_choice:round===0?{type:"any"}:{type:"auto"}});
     const calls=response.content.filter((part:any)=>part.type==="tool_use");
     if(!calls.length){
       const raw=response.content.filter((part:any)=>part.type==="text").map((part:any)=>part.text).join(" ").trim();
@@ -102,7 +103,7 @@ const presentationSchema=z.object({source_product_ids:z.array(z.string()).length
 export async function composeCandidateIntroduction(candidates:any[]):Promise<string>{
   const {api,model}=client();
   const facts=candidates.map(item=>({source_product_id:item.product_snapshot?.source_product_id,original_name:item.product_snapshot?.product_name_original,category:item.product_snapshot?.category,price_experiment:item.product_snapshot?.price,fit_reason:item.product_snapshot?.fit_reason}));
-  const response=await api.messages.create({model,max_tokens:250,temperature:0,
+  const response=await api.messages.create({model,max_tokens:250,...shortResponseOptions(model),
     system:"Select all three provided product IDs in their exact order and select one focus. You must not add products or facts. The server renders names/prices/specs from its database.",
     messages:[{role:"user",content:JSON.stringify(facts)}],
     tools:[{name:"present_recommendation",description:"Choose only verified candidate IDs and a neutral comparison focus",input_schema:{type:"object",properties:{source_product_ids:{type:"array",items:{type:"string"},minItems:3,maxItems:3},focus:{type:"string",enum:["관심사","실용성","예산"]}},required:["source_product_ids","focus"]}}],
@@ -119,7 +120,7 @@ export async function chooseFinalProductWithClaude(candidates:any[]):Promise<{so
   if(candidates.length!==3)throw new Error("CANDIDATES_NOT_READY");
   const {api,model}=client();
   const facts=candidates.map(item=>({source_product_id:item.product_snapshot?.source_product_id,category:item.product_snapshot?.category,price_experiment:item.product_snapshot?.price,fit_reason:item.product_snapshot?.fit_reason}));
-  const response=await api.messages.create({model,max_tokens:200,temperature:0,
+  const response=await api.messages.create({model,max_tokens:200,...shortResponseOptions(model),
     system:"Choose exactly one of the three verified candidate source IDs for the gift. Use only the supplied facts, with neutral judgment. Never invent an ID or change the budget. Call choose_final_product once.",
     messages:[{role:"user",content:JSON.stringify(facts)}],
     tools:[{name:"choose_final_product",description:"Choose a final verified product",input_schema:{type:"object",properties:{source_product_id:{type:"string"},reason_focus:{type:"string",enum:["관심사","실용성","예산"]}},required:["source_product_id","reason_focus"]}}],

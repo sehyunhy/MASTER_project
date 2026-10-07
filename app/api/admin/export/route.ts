@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { deriveBehaviorMetrics } from "@/lib/experiment/behavior";
 import { EXPERIMENT } from "@/config/experiment";
+import { anthropicModel } from "@/lib/agent/model";
 
 const allowed=["participants","trials","guided_responses","gift_candidates","product_catalog","final_selections","event_logs","trial_messages","trial_phase_exposures","trial_search_states","recipient_stimuli","training_practice_checks","experiment_metadata","analysis_ready","behavior_analysis_ready"];
 const csv=(rows:any[],columns:string[])=>[columns.join(","),...rows.map(row=>columns.map(column=>{
@@ -63,7 +64,7 @@ export async function GET(request:Request){
       });
       columns=Object.keys(rows[0]??{participant_trial_key:"",participant_id:"",participant_code:"",trial_number:"",condition_id:"",criteria_effective_exposure_ms:"",is_mock:""});
     } else if(name==="experiment_metadata"){
-      rows=[{experiment_version:EXPERIMENT.version,ui_version:EXPERIMENT.uiVersion,profile_version:EXPERIMENT.profileVersion,candidate_version:EXPERIMENT.candidateVersion,prompt_version:EXPERIMENT.promptVersion,sequence_version:EXPERIMENT.sequenceVersion,dataset_version:EXPERIMENT.candidateVersion,giver_model_version:process.env.ANTHROPIC_MODEL??"unconfigured",recipient_mode:"frozen_researcher_script",candidate_mode:"walmart_csv_reviewed_subset",minimum_phase_exposure_ms:EXPERIMENT.minimumPhaseExposureMs}];
+      rows=[{experiment_version:EXPERIMENT.version,ui_version:EXPERIMENT.uiVersion,profile_version:EXPERIMENT.profileVersion,candidate_version:EXPERIMENT.candidateVersion,prompt_version:EXPERIMENT.promptVersion,sequence_version:EXPERIMENT.sequenceVersion,dataset_version:EXPERIMENT.candidateVersion,giver_model_version:anthropicModel(),recipient_mode:"frozen_researcher_script",candidate_mode:"walmart_csv_reviewed_subset",minimum_phase_exposure_ms:EXPERIMENT.minimumPhaseExposureMs}];
       columns=Object.keys(rows[0]);
     } else {
       const {data,error}=await db.from(name).select("*").limit(10000);

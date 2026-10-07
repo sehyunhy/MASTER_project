@@ -488,7 +488,7 @@ export function Experiment({ role }: { role: Role }) {
       <div className="experiment-profile-details"><p className="body">{profile.recent_interest}</p><p className="body">{profile.preference}</p><p className="body">{profile.dislike}</p></div>
     </section>
 
-    {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">AI 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY와 ANTHROPIC_MODEL을 확인하고 새 배포를 해야 합니다.</p>}
+    {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">AI 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY를 확인하고 새 배포를 해야 합니다.</p>}
     {role==="giver"&&phase==="criteria"&&!catalogReady&&<p className="experiment-error" role="status">현재 기준과 예산에 맞는 검토된 상품이 {filteredCatalogCount}개입니다. 후보 구성에는 3개가 필요합니다. {Number(catalogOptions.eligibleCount??0)>=3?"기준을 넓히거나 연구자에게 상품 준비를 요청해 주세요.":"연구자에게 상품 준비를 요청해 주세요."}</p>}
     </aside>
     <div className="experiment-workspace">

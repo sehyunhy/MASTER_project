@@ -19,7 +19,7 @@ function snapshot(item:any) {
   };
 }
 
-export async function generateTrialCandidates(db:any,trialId:string) {
+export async function generateTrialCandidates(db:any,trialId:string,options:{previewOnly?:boolean}={}) {
   const {data:trial,error:trialError}=await db.from("trials")
     .select("id,profile_id,participant_id,experiment_version,dataset_version,scenario_id,condition_id,stimulus_id")
     .eq("id",trialId).single();
@@ -72,6 +72,11 @@ export async function generateTrialCandidates(db:any,trialId:string) {
     if(existing.length!==3||JSON.stringify(existing.map((x:any)=>x.product_snapshot))!==JSON.stringify(snapshots))throw new Error("이미 저장된 후보 집합이 현재 자극과 다릅니다.");
     return {candidates:existing.map((x:any)=>({gift_candidate_id:x.gift_candidate_id,display_order:x.display_order,product_snapshot:x.product_snapshot})),candidateSetId,candidateSetHash,stimulus};
   }
+  // Check the exact candidate set before advancing the trial without writing a trial candidate.
+  if(options.previewOnly)return {
+    candidates:snapshots.map((productSnapshot:any,index:number)=>({display_order:index+1,product_snapshot:productSnapshot})),
+    candidateSetId,candidateSetHash,stimulus,
+  };
   const result=[];
   for(let index=0;index<3;index++){
     const item=picked[index], productSnapshot=snapshots[index];

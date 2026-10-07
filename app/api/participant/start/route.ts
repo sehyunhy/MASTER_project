@@ -5,6 +5,7 @@ import { logEvent } from "@/lib/events";
 import { profileAt } from "@/lib/experiment/assignment";
 import { createParticipantSession } from "@/lib/auth/participant";
 import { EXPERIMENT } from "@/config/experiment";
+import { anthropicModel } from "@/lib/agent/model";
 
 export async function POST(request: Request) {
   const parsed = startSchema.safeParse(await request.json());
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
         const authority = condition === "C1" || condition === "C3" ? "human" : "agent";
         const profileId=profileAt(i + 1, offset);
         return { participant_id: p.id, trial_number: i + 1, profile_id: profileId, scenario_id: "gift-scenario-"+profileId, condition_id: condition, execution_autonomy: autonomy, decision_authority: authority,
-          experiment_version: p.experiment_version,ui_version:EXPERIMENT.uiVersion,profile_version:EXPERIMENT.profileVersion,candidate_version:EXPERIMENT.candidateVersion,dataset_version:EXPERIMENT.candidateVersion,prompt_version:EXPERIMENT.promptVersion,model_version:p.role==="recipient"?"frozen-script-v1":(process.env.ANTHROPIC_MODEL??"model-unconfigured"),sequence_version:EXPERIMENT.sequenceVersion,
+          experiment_version: p.experiment_version,ui_version:EXPERIMENT.uiVersion,profile_version:EXPERIMENT.profileVersion,candidate_version:EXPERIMENT.candidateVersion,dataset_version:EXPERIMENT.candidateVersion,prompt_version:EXPERIMENT.promptVersion,model_version:p.role==="recipient"?"frozen-script-v1":anthropicModel(),sequence_version:EXPERIMENT.sequenceVersion,
           stimulus_source:p.role==="recipient"?"researcher_scripted":"participant_live" };
       });
       const { error: trialError } = await db.from("trials").insert(rows);

@@ -49,7 +49,7 @@ where id = 'gift-scenario-R4-v1' and review_status = 'pending';
 
 ## 환경변수와 실행
 
-`npm ci` 후 `.env.example`을 참고해 `.env.local`에 같은 Supabase 프로젝트의 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY`(또는 구형 `SUPABASE_SERVICE_ROLE_KEY`)를 넣습니다. Vercel Marketplace가 프로젝트 ref를 앞에 붙인 서버 변수도 코드가 찾습니다. `NEXT_PUBLIC_SUPABASE_ANON_KEY`는 서버 비밀 키 대신 쓸 수 없습니다. `ANTHROPIC_API_KEY`, 현재 계정에서 사용 가능한 **정확한** `ANTHROPIC_MODEL` ID, `PARTICIPANT_SESSION_SECRET`, `ADMIN_PASSWORD`도 필요합니다. 어떤 비밀값도 GitHub나 채팅에 붙여 넣지 마세요.
+`npm ci` 후 `.env.example`을 참고해 `.env.local`에 같은 Supabase 프로젝트의 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY`(또는 구형 `SUPABASE_SERVICE_ROLE_KEY`)를 넣습니다. Vercel Marketplace가 프로젝트 ref를 앞에 붙인 서버 변수도 코드가 찾습니다. `NEXT_PUBLIC_SUPABASE_ANON_KEY`는 서버 비밀 키 대신 쓸 수 없습니다. `ANTHROPIC_API_KEY`, `PARTICIPANT_SESSION_SECRET`, `ADMIN_PASSWORD`도 필요합니다. Claude 모델은 기본으로 `claude-sonnet-5`를 사용하며, 다른 모델이 필요할 때만 계정에서 사용 가능한 정확한 ID를 `ANTHROPIC_MODEL`에 넣습니다. 어떤 비밀값도 GitHub나 채팅에 붙여 넣지 마세요.
 
 ```bash
 cd "/Users/sehyun/Desktop/학위/gift-experiment-git"

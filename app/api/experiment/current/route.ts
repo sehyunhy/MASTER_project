@@ -91,6 +91,6 @@ export async function GET(request: Request) {
       if(optionsError)throw optionsError;
       catalogOptions={categories:[...new Set((options??[]).map((x:any)=>x.category))],tags:[...new Set((options??[]).flatMap((x:any)=>x.search_tags_ko??[]))],eligibleCount:(options??[]).length,items:options??[]};
     }
-    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY&&process.env.ANTHROPIC_MODEL):undefined });
+    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY):undefined });
   } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "데이터를 불러오지 못했습니다." }, { status: 500 }); }
 }
