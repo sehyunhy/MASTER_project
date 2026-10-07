@@ -7,8 +7,8 @@ export const EXPERIMENT = {
   sequenceVersion: "williams-v1",
   participantsPerRole: 40,
   recipientPlaybackDurationMs: 90_000,
-  guidedAnalysisDurationMs: 18_000,
-  autonomousAnalysisDurationMs: 18_000,
+  guidedAnalysisDurationMs: 5_000,
+  autonomousAnalysisDurationMs: 5_000,
   sequences: {
     S1: ["C1", "C2", "C4", "C3"],
     S2: ["C2", "C3", "C1", "C4"],

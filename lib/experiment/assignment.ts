@@ -14,7 +14,7 @@ export function profileAt(trialNumber: number, sequenceIndex: number): string {
 }
 
 export function validateWilliamsSequences() {
-  const sequences = Object.values(EXPERIMENT.sequences) as readonly string[][];
+  const sequences = Object.values(EXPERIMENT.sequences) as unknown as readonly (readonly string[])[];
   const positions = new Map<string, number>();
   const pairs = new Map<string, number>();
   for (const seq of sequences) {

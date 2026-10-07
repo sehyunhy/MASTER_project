@@ -6,7 +6,7 @@ Next.js App Router + React + TypeScript + Tailwind, Supabase PostgreSQL, Zod를 
 
 - **Frontend:** Next.js App Router. `/experiment/giver`, `/experiment/recipient` 화면을 역할별로 분리했습니다.
 - **Backend:** Route Handlers에서 participant session, comprehension 결과, trial 행동 및 event를 저장합니다.
-- **Database:** `supabase/migrations/0001_initial.sql`에 schema와 RLS를 정의했습니다. 익명 정책은 열지 않고 서버용 service role로만 DB를 다룹니다.
+- **Database:** `supabase/migrations/0001_initial.sql`과 `0002_behavioral_logging.sql`에 schema, RLS, 행동 로그 필드를 정의했습니다. 익명 정책은 열지 않고 서버용 service role로만 DB를 다룹니다.
 - **AI:** `EXPERIMENT_CANDIDATE_MODE=controlled`가 기본입니다. `live`는 Claude Messages API를 서버에서만 호출하는 개발 데모 모드입니다.
 - **Deployment:** Vercel 배포를 위한 Next.js 프로젝트입니다.
 
@@ -21,21 +21,23 @@ S1–S4는 요청된 Williams 순서입니다. 네 조건이 각 위치에 한 �
 1. Node.js 20 이상과 npm을 설치합니다.
 2. 이 폴더에서 `npm install`을 실행합니다.
 3. `.env.example`을 `.env.local`로 복사하고 Supabase URL, anon key, service-role key를 입력합니다. `ANTHROPIC_API_KEY`는 live demo를 쓸 때만 입력합니다.
-4. Supabase SQL Editor에서 `supabase/migrations/0001_initial.sql` 전체를 한 번 실행합니다.
+4. Supabase SQL Editor에서 `0001_initial.sql`, `0002_behavioral_logging.sql`, `0003_product_catalog.sql`을 순서대로 실행합니다.
 5. `npm run seed:assignments`로 실참가자 슬롯 40개를 만들거나, `PARTICIPANT_ROLE=recipient npm run seed:assignments`로 40명을 관찰자 역할로 준비합니다. 다시 실행하면 같은 P코드의 배정은 upsert됩니다. 실제 참여 시작 후에는 배정을 바꾸지 마세요.
 6. `npm run dev`를 실행하고 [http://localhost:3000](http://localhost:3000)을 엽니다. Admin은 `/admin`입니다.
 7. 브라우저에서 `P001`–`P040` 중 배정된 코드를 입력합니다. 성공적으로 시작된 participant는 DB assignment와 trial order를 계속 사용합니다.
 
 ### Mock data and QA
 
-- `npm run seed:mock`: mock prefix `MOCK-P`로 40명, 160 trials, 480 trial-candidate links, 160 selections, 240 guided answers, 44 training attempts, 1,120 event rows, 40 controlled candidate pool records를 생성합니다. 기록은 모두 `is_mock=true` 또는 `MOCK-P` prefix로 식별됩니다.
+- `npm run seed:mock`: mock prefix `MOCK-P`로 40명, 160 trials, 480 candidate links, 160 selections, 240 guided answers 및 행동 타임라인을 생성합니다. 이 명령은 기존 mock 참가자와 그 하위 mock 기록을 먼저 지우고 다시 생성하며, 실제 참가자 기록은 건드리지 않습니다. 모든 생성 기록은 `is_mock=true`입니다.
+- `npm run seed:products`: `product_catalog` 테이블에 합성 QA 제품 300개를 넣습니다. 이 데이터는 실제 판매 상품/SKU가 아니며, 전부 `source=synthetic_qa`, `is_mock=true`로 구분됩니다. 실행 시 기존 synthetic QA 카탈로그만 교체합니다. Admin에서 `product_catalog.csv`로 내려받을 수 있습니다.
 - `npm run clear:mock`: `MOCK-P%` 참가자와 그 하위 기록만 제거합니다.
 - `npm test`: Williams design, condition/profile mapping, state-transition unit tests를 실행합니다.
 - `npm run typecheck`: TypeScript 타입 검사를 실행합니다.
 - `npm run validate:experiment`: 현재 DB의 mock 배정과 trial/candidate/selection 정합성을 확인하고 JSON을 출력합니다.
+- Admin CSV export에서 `behavior_analysis_ready.csv`를 선택하면 관찰 가능한 행동시간·후보 확인·재방문·선택 지표를 받을 수 있습니다. Condition에 해당하지 않는 guided 또는 human-only 값은 null로 내보냅니다.
 - `/admin`에서 비밀번호 인증 후 상태 요약과 CSV export를 확인할 수 있습니다.
 
-Paper survey CSV는 `analysis_ready.csv`의 `participant_id`와 `trial_number`를 기준으로 결합합니다. `participants.csv`와 analysis export의 participant 식별자는 참가자가 입력한 코드입니다. 종이 설문에 같은 코드를 기록하세요.
+웹 행동 데이터와 paper survey CSV는 `participant_id`와 `trial_number`를 기준으로 결합합니다. Admin의 `behavior_analysis_ready.csv`에는 participant 식별자로 참가자 코드가 들어갑니다. 종이 설문에 같은 코드를 기록하세요. 웹은 심리척도나 감정 상태를 계산하지 않습니다.
 
 ## Environment variables
 
