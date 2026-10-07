@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">연구용 상품 일러스트</title>
+  <desc id="desc">실제 상품 사진을 대신하는 중립적인 선물 상자 그림</desc>
+  <rect width="640" height="420" rx="28" fill="#f4f7f5"/>
+  <circle cx="320" cy="205" r="128" fill="#e3ece8"/>
+  <path d="M218 184h204v142H218z" fill="#6c9187"/>
+  <path d="M204 153h232v47H204z" fill="#496b67"/>
+  <path d="M304 153h34v173h-34z" fill="#f0d6a4"/>
+  <path d="M320 153c-47-9-71-36-56-52 20-20 50 8 56 52zm0 0c47-9 71-36 56-52-20-20-50 8-56 52z" fill="none" stroke="#f0d6a4" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="320" y="372" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#65727b">연구용 상품 일러스트</text>
+</svg>

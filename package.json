@@ -6,13 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "seed:mock": "tsx scripts/seedMockExperiment.ts",
-    "seed:products": "tsx scripts/seedProductCatalog.ts",
     "clear:mock": "tsx scripts/clearMockExperiment.ts",
     "seed:assignments": "tsx scripts/seedAssignments.ts",
-    "validate:experiment": "tsx scripts/validateExperiment.ts"
+    "validate:experiment": "tsx scripts/validateExperiment.ts",
+    "import:walmart": "python3 scripts/importWalmartCsv.py"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

@@ -1,91 +1,72 @@
-<<<<<<< HEAD
-# 선물 선택 실험 시스템
+# 선물 의사결정 연구 시스템 · v3
 
-Next.js App Router + React + TypeScript + Tailwind, Supabase PostgreSQL, Zod를 사용하는 연구 시스템 초기 구현입니다. 참가자 조건은 server-side DB에서만 결정하고 Claude와 Supabase service-role key는 브라우저로 보내지 않습니다.
+증여자와 수혜자에게 서로 다른 화면을 제공합니다. A/B에서는 증여자가 후보 구성과 비교를 요청하고, C/D에서는 공통 기준 입력 뒤 AI가 진행합니다. A/C에서는 증여자가 최종 선택하며, B/D에서는 AI가 선택합니다. 화면에서는 심리척도와 주관적 평가를 수집하지 않고 종이 설문 완료만 확인합니다.
 
-## Architecture
+## 이 버전에서 달라진 점
 
-- **Frontend:** Next.js App Router. `/experiment/giver`, `/experiment/recipient` 화면을 역할별로 분리했습니다.
-- **Backend:** Route Handlers에서 participant session, comprehension 결과, trial 행동 및 event를 저장합니다.
-- **Database:** `supabase/migrations/0001_initial.sql`과 `0002_behavioral_logging.sql`에 schema, RLS, 행동 로그 필드를 정의했습니다. 익명 정책은 열지 않고 서버용 service role로만 DB를 다룹니다.
-- **AI:** `EXPERIMENT_CANDIDATE_MODE=controlled`가 기본입니다. `live`는 Claude Messages API를 서버에서만 호출하는 개발 데모 모드입니다.
-- **Deployment:** Vercel 배포를 위한 Next.js 프로젝트입니다.
+- 증여자는 자유 대화 또는 실제 CSV에 존재하는 카테고리·특성 선택 메뉴로 하나의 검색 상태를 입력합니다. Claude는 서버의 상품 조회 도구를 사용하고, 서버가 확인한 상품 ID·가격·규격으로 카드가 구성됩니다.
+- 증여자 B/D에서 AI는 저장된 세 후보의 원본 ID 중 하나를 도구 응답으로 선택합니다. 서버가 해당 trial의 상품인지 검증합니다. 수혜자 B/D는 연구자가 승인한 동결 자극의 최종 상품을 재생합니다.
+- 수혜자는 연구자가 구성한 증여자·AI 대화를 시간순으로 관찰합니다. 연습 뒤에는 비교 시작 주체와 최종 결정 주체를 각각 확인합니다. 본실험에서 수혜자는 과업 요청이나 최종 선택을 수행할 수 없습니다.
+- 수혜자 본실험은 `recipient_stimuli`의 **approved + frozen_at** 자극만 표시합니다. 같은 `scenario_id`의 A/B/C/D는 같은 후보·가격·최종 상품 스냅샷을 사용합니다. 화면에서 연구자가 구성한 시나리오임을 알립니다.
+- 기준, 후보, 비교 각각 서버가 확인한 유효 노출 30초가 필요합니다. 숨김·오프라인 구간은 제외하고, 새로고침 뒤 서버의 확정 단계·누적시간을 사용합니다.
+- 로그에는 실제 `participant` 행동과 화면 속 `scripted`/`recorded` 행동을 `event_origin`으로 분리합니다. 연습에는 `training: true`를 기록하고 본실험 trial과 분리합니다.
 
-## Assignment and counterbalancing
+## 현재 데이터의 사용 가능 범위
 
-40개 실참가자 코드는 `P001`–`P040`입니다. P001–P020은 high, P021–P040은 low로 배정하고 각 그룹을 순서대로 5명씩 S1–S4에 배치합니다. 역할은 seed 시 `PARTICIPANT_ROLE` 환경변수로 전부 giver 또는 recipient로 지정하며 기본값은 giver입니다. 실제 혼합 역할 배정을 원하면 시작 전에 `participants.role`을 연구 프로토콜에 맞게 수정해야 합니다.
+첨부된 `walmart-products.csv`는 **2024년 8월의 USD 가격 기록 1,000행**입니다. 이 파일을 Walmart의 공식 배포 데이터 또는 현재 판매가격으로 간주하지 않습니다. 원본은 1,000행 모두 보존하고, 원본 상품 ID로 재가져오기 중복을 막습니다. 의류 594행이 가장 많으며 사이즈 적합성 정보가 없는 의류는 실험 후보로 자동 선정하지 않습니다.
 
-S1–S4는 요청된 Williams 순서입니다. 네 조건이 각 위치에 한 번씩 나오고, 12개 가능한 순서쌍이 각 한 번씩 나타나는지 검증합니다. Profile은 sequence order와 별도의 회전 규칙으로 배정합니다.
+기본 선별 목록은 `scripts/importWalmartCsv.py`의 정확한 원본 `product_id` 목록에 있습니다. 1 USD당 1,300원, 100원 반올림이라는 **검사용 예시값**에서 R4는 4개, R1은 1개, R2는 0개, R3는 1개만 예산 안에서 사용 가능한 것으로 분류됐습니다. 이 숫자는 연구용 환율 결정이 아닙니다. **R1–R3의 세 후보 시나리오를 완성하려면 연구자가 승인한 추가 상품 자료가 필요합니다.** 자료가 채워질 때까지 관련 없는 상품을 추천하거나 수혜자 자극을 승인하지 마세요.
 
-## Local setup
+한국어 표시명은 선별된 정확한 원본 ID에만 작성했습니다. 나머지 원본명은 그대로 보존하고 `product_name_ko`는 비워 둡니다. `specifications`, 이미지 URL 목록, 원문 설명, 원본 가격·통화·기록 시점 문자열과 원본 행을 별도 필드에 저장합니다. 원본 시각에는 시간대가 없어 시간대 값을 임의로 부여하지 않습니다.
 
-1. Node.js 20 이상과 npm을 설치합니다.
-2. 이 폴더에서 `npm install`을 실행합니다.
-3. `.env.example`을 `.env.local`로 복사하고 Supabase URL, publishable key, server secret key를 입력합니다. `ANTHROPIC_API_KEY`는 live demo를 쓸 때만 입력합니다.
-4. Supabase SQL Editor에서 `0001_initial.sql`, `0002_behavioral_logging.sql`, `0003_product_catalog.sql`을 순서대로 실행합니다.
-5. `npm run seed:assignments`로 실참가자 슬롯 40개를 만들거나, `PARTICIPANT_ROLE=recipient npm run seed:assignments`로 40명을 관찰자 역할로 준비합니다. 다시 실행하면 같은 P코드의 배정은 upsert됩니다. 실제 참여 시작 후에는 배정을 바꾸지 마세요.
-6. `npm run dev`를 실행하고 [http://localhost:3000](http://localhost:3000)을 엽니다. Admin은 `/admin`입니다.
-7. 브라우저에서 `P001`–`P040` 중 배정된 코드를 입력합니다. 성공적으로 시작된 participant는 DB assignment와 trial order를 계속 사용합니다.
+## Supabase SQL 적용
 
-### Mock data and QA
+기존 프로젝트에서 `0001`–`0004`를 이미 적용했다면 **[`0005_walmart_chat_observation.sql`](supabase/migrations/0005_walmart_chat_observation.sql)**만 SQL Editor에서 실행합니다. 새 DB라면 [`one-click-setup.sql`](supabase/one-click-setup.sql)을 실행합니다. 이 파일에는 스키마와 기존 연구자가 정한 네 프로필·P001–P080 슬롯이 들어가며, 합성 상품 300개는 더 이상 새 실험 카탈로그로 심지 않습니다. 기존 합성 상품 행이나 이미 시작한 참가자 자료는 삭제하지 않습니다.
 
-- `npm run seed:mock`: mock prefix `MOCK-P`로 40명, 160 trials, 480 candidate links, 160 selections, 240 guided answers 및 행동 타임라인을 생성합니다. 이 명령은 기존 mock 참가자와 그 하위 mock 기록을 먼저 지우고 다시 생성하며, 실제 참가자 기록은 건드리지 않습니다. 모든 생성 기록은 `is_mock=true`입니다.
-- `npm run seed:products`: `product_catalog` 테이블에 합성 QA 제품 300개를 넣습니다. 이 데이터는 실제 판매 상품/SKU가 아니며, 전부 `source=synthetic_qa`, `is_mock=true`로 구분됩니다. 실행 시 기존 synthetic QA 카탈로그만 교체합니다. Admin에서 `product_catalog.csv`로 내려받을 수 있습니다.
-- `npm run clear:mock`: `MOCK-P%` 참가자와 그 하위 기록만 제거합니다.
-- `npm test`: Williams design, condition/profile mapping, state-transition unit tests를 실행합니다.
-- `npm run typecheck`: TypeScript 타입 검사를 실행합니다.
-- `npm run validate:experiment`: 현재 DB의 mock 배정과 trial/candidate/selection 정합성을 확인하고 JSON을 출력합니다.
-- Admin CSV export에서 `behavior_analysis_ready.csv`를 선택하면 관찰 가능한 행동시간·후보 확인·재방문·선택 지표를 받을 수 있습니다. Condition에 해당하지 않는 guided 또는 human-only 값은 null로 내보냅니다.
-- `/admin`에서 비밀번호 인증 후 상태 요약과 CSV export를 확인할 수 있습니다.
+원화 예산 50,000원을 쓰므로 **연구자가 승인한 고정 USD→KRW 환율과 원 단위 반올림 규칙**이 필요합니다. 환율을 아직 정하지 않았다면 아래 가져오기를 실행하지 마세요. 로컬에서 승인값을 입력해 SQL을 만듭니다.
 
-웹 행동 데이터와 paper survey CSV는 `participant_id`와 `trial_number`를 기준으로 결합합니다. Admin의 `behavior_analysis_ready.csv`에는 participant 식별자로 참가자 코드가 들어갑니다. 종이 설문에 같은 코드를 기록하세요. 웹은 심리척도나 감정 상태를 계산하지 않습니다.
+```bash
+cd "/Users/sehyun/Desktop/학위/gift-experiment-git"
+read -r "FX_RATE_KRW_PER_USD?승인한 1 USD당 원화 금액: "
+read -r "ROUND_KRW?승인한 반올림 단위(원): "
+python3 scripts/importWalmartCsv.py --csv walmart-products.csv --fx-rate "$FX_RATE_KRW_PER_USD" --round-krw "$ROUND_KRW"
+```
 
-## Environment variables
+명령은 DB에 연결하지 않고 `supabase/seed-walmart-products.sql`, `supabase/seed-walmart-products-batches/batch-01.sql`부터의 작은 SQL 파일, `supabase/seed-walmart-stimuli.sql`, `supabase/seed-walmart-products.report.json`을 만듭니다. **전체 SQL 한 파일 또는 batch 파일들을 순서대로** SQL Editor에 적용합니다. 둘 다 적용할 필요는 없습니다. 보고서에서 원본·처리·제외·파싱 오류·프로필별 부족 수량을 확인합니다.
 
-| Variable | Use |
-| --- | --- |
-| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SECRET_KEY` | current server key; server and seed scripts only, never expose to client |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | current public browser key; RLS still applies |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | legacy fallbacks for existing projects |
-| `ANTHROPIC_API_KEY` | optional, server-only Claude live demo |
-| `ANTHROPIC_MODEL` | default `claude-sonnet-5` |
-| `EXPERIMENT_CANDIDATE_MODE` | `controlled` default or `live` demo |
-| `ADMIN_PASSWORD` | protects `/admin` summary and CSV routes |
-| `PARTICIPANT_SESSION_SECRET` | HMAC signing secret for participant session cookie (use a random secret in production) |
-| `PARTICIPANT_ROLE` | seed role default `giver` or `recipient` |
+`seed-walmart-stimuli.sql`은 후보 3개를 채운 시나리오만 **pending**으로 만듭니다. 연구자가 후보의 원본명·가격·이미지·추천 근거·대화·출처를 검토하고, `recipient_stimuli.review_status='approved'` 및 `frozen_at`을 기록한 자극만 수혜자에게 보입니다. R1–R3에 상품이 모자란 현재 데이터만으로는 전체 수혜자 실험을 시작할 수 없습니다.
 
-Claude's current model identifier and Messages API usage are documented by [Anthropic model deprecations](https://docs.anthropic.com/en/docs/about-claude/model-deprecations) and [Messages API](https://docs.anthropic.com/en/api/messages). The configured model can be changed without editing source code.
+검토를 마친 자극은 SQL Editor에서 해당 ID를 정확히 지정해 승인합니다. 승인된 행은 트리거로 수정·삭제가 막히므로 대화나 상품을 바꿀 때는 새 버전 행을 만드세요.
 
-## Vercel deployment
+```sql
+update public.recipient_stimuli
+set review_status = 'approved', frozen_at = now()
+where id = 'gift-scenario-R4-v1' and review_status = 'pending';
+```
 
-1. Push the `gift-experiment` folder as a GitHub repository (or make it the repository root).
-2. Create a Supabase project and execute the SQL migration above.
-3. Locally set `.env.local`, then run `npm run seed:assignments`. Run `npm run seed:mock` only in a development database.
-4. In Vercel, import the repository and set the Root Directory to `gift-experiment` if the repository root contains the parent folder.
-5. Connect the Supabase Marketplace project or add `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and a strong `ADMIN_PASSWORD` under Vercel Project → Settings → Environment Variables. Add `ANTHROPIC_API_KEY` only if the demo mode is deliberately enabled. Keep `EXPERIMENT_CANDIDATE_MODE=controlled` for research sessions.
-6. Deploy. Redeploy after changing environment variables so server functions pick up the new values. For code changes Vercel redeploys from the connected Git branch.
-7. Verify `/`, `/start`, `/admin`, database insert and CSV export using a test assignment in a staging Supabase project. Do not use the production participant list for QA.
+생성된 원본 CSV와 SQL은 `.gitignore`로 GitHub 업로드에서 제외합니다. SQL을 Supabase에 적용하면 Vercel은 DB에서 상품을 읽으므로 원본 CSV를 배포할 필요가 없습니다.
 
-## Validity and deployment caveats
+## 환경변수와 실행
 
-1. **Profile-condition balance:** profiles rotate independently, but this initial deterministic rotation is not a full independently randomized profile-condition Latin square. Validate the final assignment matrix before data collection.
-2. **Role mix:** assignment seeding supports a single role per run; a mixed giver/recipient allocation must be configured in the DB before any participant begins.
-3. **Participant allocation:** 40 assignments are fixed by code ranges. If recruitment order differs, pre-generate and freeze the assignment sheet before opening access.
-4. **Live Claude variation:** live mode is not controlled and must not be used for the production experiment. Controlled candidate records are deterministic.
-5. **Controlled candidates:** the included candidate pool is prototype stimulus content. Researcher review and pretesting are required before a real study.
-6. **Recipient playback:** playback duration is fixed at 90 seconds, but the current implementation uses staged text/card placeholders rather than a fully matched, authored 90-second transcript for each condition.
-7. **Completion timing:** giver actions are logged; candidate display and interaction timing should be piloted on target hardware and network conditions.
-8. **Admin access:** admin uses a shared password; use a long unique value, restrict who receives it, and consider institutional SSO before deployment with sensitive data.
-9. **Research privacy:** participant names are not collected, but participant codes and event records remain sensitive research data. Follow the institution's retention and consent requirements.
-10. **Recovery and connectivity:** DB is the source of truth and sessions survive refresh in the same browser. Expired participant session cookies require the participant to re-enter through `/start`.
-11. **Integration QA:** automated tests cover core assignment/state invariants. Complete end-to-end giver and recipient checks against a staging Supabase project before recruiting participants.
-12. **No paper-survey outcomes:** this system exports merge keys and process metadata only; psychological questionnaire outcomes must be entered and analyzed separately.
-13. **Researcher controls:** timing, questions, profiles, pool, and versions are centralized in code/configuration, but a complete editable Admin configuration UI and CSV-based mixed-role assignment import are not implemented yet.
+`npm ci` 후 `.env.example`을 참고해 `.env.local`에 같은 Supabase 프로젝트의 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY`(또는 구형 `SUPABASE_SERVICE_ROLE_KEY`)를 넣습니다. Vercel Marketplace가 프로젝트 ref를 앞에 붙인 서버 변수도 코드가 찾습니다. `NEXT_PUBLIC_SUPABASE_ANON_KEY`는 서버 비밀 키 대신 쓸 수 없습니다. `ANTHROPIC_API_KEY`, 현재 계정에서 사용 가능한 **정확한** `ANTHROPIC_MODEL` ID, `PARTICIPANT_SESSION_SECRET`, `ADMIN_PASSWORD`도 필요합니다. 어떤 비밀값도 GitHub나 채팅에 붙여 넣지 마세요.
 
-## Routes
+```bash
+cd "/Users/sehyun/Desktop/학위/gift-experiment-git"
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run dev
+```
 
-`/` · `/start` · `/training` · `/experiment/giver` · `/experiment/recipient` · `/complete` · `/admin`
-=======
-# MASTER_project
->>>>>>> 71d236ce11f78fb9c31e46096415a38472115949
+[http://localhost:3000](http://localhost:3000)에서 열 수 있습니다. Vercel은 Root Directory에 이 저장소의 `package.json`이 있어야 하고 Framework Preset은 **Next.js**, Output Directory는 **Next.js default(빈 값)**이어야 합니다. 환경변수는 Production에 추가한 뒤 새 배포를 만들어야 적용됩니다.
+
+## 검증 범위와 파일럿
+
+이 저장소에서 `npm test`, `npm run typecheck`, `npm run build`로 로컬 코드·CSV 파서·조건 순서·서버 노출 계산을 검사합니다. 실제 Claude 호출, Supabase SQL/RPC, Vercel 환경, 이미지 로딩, 숨김/복귀, 실제 브라우저의 역할별 4조건은 비밀 키와 완성된 카탈로그가 있어야 검증할 수 있습니다. 참가자 모집 전에 staging DB에서 각 조건의 역할별 전체 흐름, 30초×3, 새로고침, 중복 클릭, 종이 설문 진입, CSV export를 파일럿하십시오.
+
+종이 설문은 `participant_code + trial_number`로 결합합니다. 수혜자의 실제 행동은 `event_origin='participant'`, 스크립트 속 증여자·AI는 `event_origin='scripted'`로 분석에서 분리합니다. `behavior_analysis_ready` export의 수혜자 인간 선택 횟수는 0으로 처리합니다.
+
+## GitHub와 Vercel
+
+코드 검토 후 저장소 소유자가 직접 `git add`, `commit`, `push`합니다. `.env.local`, 원본 CSV, 생성된 대형 SQL은 `.gitignore`로 제외됩니다. Vercel이 `main`의 새 커밋을 배포하면 **새 배포의 commit SHA**와 현재 GitHub SHA가 같은지 확인하세요. 이전 실패 배포를 Redeploy하면 옛 SHA가 다시 배포될 수 있습니다.

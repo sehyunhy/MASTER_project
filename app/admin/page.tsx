@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-const exports=["participants","trials","guided_responses","gift_candidates","product_catalog","final_selections","event_logs","experiment_metadata","analysis_ready","behavior_analysis_ready"];
+const exports=["participants","trials","guided_responses","gift_candidates","product_catalog","final_selections","event_logs","trial_messages","trial_phase_exposures","experiment_metadata","analysis_ready","behavior_analysis_ready"];
 export default function AdminPage(){
   const [password,setPassword]=useState("");const [summary,setSummary]=useState<any>(null);const [error,setError]=useState("");const [dataMode,setDataMode]=useState("all");
   async function load(){const r=await fetch("/api/admin/summary",{headers:{"x-admin-password":password}});const d=await r.json();if(!r.ok){setError(d.error);return;}sessionStorage.setItem("adminPassword",password);setSummary(d);setError("");}

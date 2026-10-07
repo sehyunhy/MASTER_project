@@ -13,6 +13,17 @@ export function profileAt(trialNumber: number, sequenceIndex: number): string {
   return `R${((trialNumber - 1 + sequenceIndex) % 4) + 1}`;
 }
 
+/** Profile rotation for the canonical 40-slot role roster. The five high- and
+ * five low-intimacy participants in each sequence receive offsets [0,1,2,3,0]
+ * and [0,1,2,3,1], giving every condition × profile pair ten exposures. */
+export function profileRotationOffsetForSlot(participantNumber: number, intimacy: "high"|"low") {
+  const localNumber=participantNumber>40?participantNumber-40:participantNumber;
+  if(!Number.isInteger(localNumber)||localNumber<1||localNumber>40)throw new Error("Participant slot must map to 1–40 within a role.");
+  const withinCell=(localNumber-(intimacy==="high"?1:21))%5;
+  if(withinCell<0)throw new Error("Participant slot does not match its intimacy block.");
+  return withinCell<4?withinCell:(intimacy==="high"?0:1);
+}
+
 export function validateWilliamsSequences() {
   const sequences = Object.values(EXPERIMENT.sequences) as unknown as readonly (readonly string[])[];
   const positions = new Map<string, number>();

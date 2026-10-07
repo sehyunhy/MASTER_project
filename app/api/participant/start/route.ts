@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { logEvent } from "@/lib/events";
 import { profileAt } from "@/lib/experiment/assignment";
 import { createParticipantSession } from "@/lib/auth/participant";
+import { EXPERIMENT } from "@/config/experiment";
 
 export async function POST(request: Request) {
   const parsed = startSchema.safeParse(await request.json());
@@ -17,18 +18,25 @@ export async function POST(request: Request) {
     }
     if (!p) return NextResponse.json({ error: "등록되지 않은 코드 또는 참여 방식입니다. 연구자에게 확인해 주세요." }, { status: 404 });
     if (p.status === "completed" || p.status === "withdrawn") return NextResponse.json({ error: "이 참가자 코드는 완료되었거나 중단 처리되었습니다." }, { status: 409 });
+    if (p.experiment_version !== EXPERIMENT.version) return NextResponse.json({error:"이 참가자 코드는 이전 연구 버전으로 배정되어 있습니다. 연구자가 새 버전 배정을 확인해 주세요."},{status:409});
     const now = new Date().toISOString();
-    if (!p.started_at) await db.from("participants").update({ status: "started", started_at: now }).eq("id", p.id);
+    if (!p.started_at) {
+      const {error:updateError}=await db.from("participants").update({ status: "started", started_at: now }).eq("id", p.id);
+      if(updateError)throw updateError;
+    }
     const { data: existing } = await db.from("trials").select("id").eq("participant_id", p.id).limit(1);
     if (!existing?.length) {
       const { data: seq } = await db.from("experiment_sequences").select("*").eq("id", p.sequence_id).single();
       if (!seq) throw new Error("Assigned sequence is missing.");
       const positions = [seq.position_1, seq.position_2, seq.position_3, seq.position_4];
-      const offset = Number(p.participant_code.slice(-1)) % 4;
+      const offset = Number(p.profile_rotation_offset ?? 0);
       const rows = positions.map((condition: string, i: number) => {
         const autonomy = condition === "C1" || condition === "C2" ? "human_guided" : "agent_autonomous";
         const authority = condition === "C1" || condition === "C3" ? "human" : "agent";
-        return { participant_id: p.id, trial_number: i + 1, profile_id: profileAt(i + 1, offset), condition_id: condition, execution_autonomy: autonomy, decision_authority: authority, experiment_version: p.experiment_version };
+        const profileId=profileAt(i + 1, offset);
+        return { participant_id: p.id, trial_number: i + 1, profile_id: profileId, scenario_id: "gift-scenario-"+profileId, condition_id: condition, execution_autonomy: autonomy, decision_authority: authority,
+          experiment_version: p.experiment_version,ui_version:EXPERIMENT.uiVersion,profile_version:EXPERIMENT.profileVersion,candidate_version:EXPERIMENT.candidateVersion,dataset_version:EXPERIMENT.candidateVersion,prompt_version:EXPERIMENT.promptVersion,model_version:p.role==="recipient"?"frozen-script-v1":(process.env.ANTHROPIC_MODEL??"model-unconfigured"),sequence_version:EXPERIMENT.sequenceVersion,
+          stimulus_source:p.role==="recipient"?"researcher_scripted":"participant_live" };
       });
       const { error: trialError } = await db.from("trials").insert(rows);
       if (trialError) throw trialError;
