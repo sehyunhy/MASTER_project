@@ -130,6 +130,17 @@ def statement(data):
     update = ",".join(f"{key}=excluded.{key}" for key in columns if key != "sku")
     return f"insert into public.product_catalog ({','.join(columns)}) values ({','.join(values)}) on conflict (sku) do update set {update};\n"
 
+def csv_value(key, value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if key in {"image_urls", "specifications", "categories", "raw_record"}:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if key in {"search_tags_ko", "fit_tags", "profile_codes", "use_cases", "strengths", "limitations", "import_issues"}:
+        return "{" + ",".join('"' + str(item).replace("\\", "\\\\").replace('"', '\\"') + '"' for item in value) + "}"
+    return str(value)
+
 def stimulus_snapshot(item):
     return {
         "source_product_id": item["source_product_id"], "sku": item["sku"],
@@ -177,6 +188,7 @@ def main():
     p.add_argument("--fx-rate", required=True, type=Decimal, help="Researcher-approved KRW per USD")
     p.add_argument("--round-krw", required=True, type=Decimal, help="Researcher-approved rounding increment")
     p.add_argument("--output", default="supabase/seed-walmart-products.sql")
+    p.add_argument("--csv-output", default="supabase/seed-walmart-products-import.csv", help="Normalized CSV for Supabase Table Editor")
     p.add_argument("--batch-size",type=int,default=100,help="Rows per SQL Editor batch")
     args = p.parse_args()
     if args.fx_rate <= 0 or args.round_krw <= 0 or args.round_krw != args.round_krw.to_integral_value() or args.batch_size<=0:
@@ -206,6 +218,15 @@ def main():
             eligible_profiles.update(data["profile_codes"])
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    csv_output = Path(args.csv_output)
+    csv_output.parent.mkdir(parents=True, exist_ok=True)
+    if good:
+        columns = [name for name in good[0] if name != "source_timestamp"]
+        with csv_output.open("w", newline="", encoding="utf-8-sig") as dest:
+            writer = csv.writer(dest)
+            writer.writerow(columns)
+            for data in good:
+                writer.writerow([csv_value(name, data[name]) for name in columns])
     with output.open("w", encoding="utf-8") as dest:
         dest.write("-- Generated from the user-provided August 2024 CSV. Historical reference prices.\n")
         dest.write(f"-- Fixed study conversion: 1 USD = {args.fx_rate} KRW; round to nearest {args.round_krw} KRW.\n")
@@ -239,7 +260,7 @@ def main():
               "dataset_version":VERSION,"source_claim":"user-provided CSV; no official or live-price claim"}
     report_path=output.with_suffix(".report.json")
     report_path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(json.dumps({"sql":str(output),"batch_directory":str(batch_dir),"batch_count":(len(good)+args.batch_size-1)//args.batch_size,"stimuli_sql":str(stimulus_path),"report":str(report_path),**report},ensure_ascii=False,indent=2))
+    print(json.dumps({"sql":str(output),"csv_import":str(csv_output),"batch_directory":str(batch_dir),"batch_count":(len(good)+args.batch_size-1)//args.batch_size,"stimuli_sql":str(stimulus_path),"report":str(report_path),**report},ensure_ascii=False,indent=2))
 
 if __name__ == "__main__":
     main()

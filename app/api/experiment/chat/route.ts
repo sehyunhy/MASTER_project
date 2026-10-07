@@ -11,6 +11,7 @@ const inputSchema=z.object({participantId:z.string().uuid(),trialId:z.string().u
   tabId:z.string().uuid(),
   inputMode:z.enum(["chat","dropdown"]),text:z.string().trim().max(1200).default(""),
   selectedCategory:z.string().nullable().optional(),preferenceTags:z.array(z.string()).max(5).optional(),
+  selectedPriority:z.enum(["취향 적합성","실용성","개인적 의미"]).nullable().optional(),
   requestIntent:z.enum(["criteria_update","search_request","compare_request"]).optional(),
   idempotencyKey:z.string().uuid()});
 
@@ -26,7 +27,7 @@ export async function POST(request:Request){
       db.from("participants").select("id,role,participant_code").eq("id",input.participantId).single(),
       db.from("trials").select("id,participant_id,profile_id,scenario_id,current_phase,status,execution_autonomy,decision_authority,experiment_version,stimulus_version").eq("id",input.trialId).eq("participant_id",input.participantId).single(),
     ]);
-    if(!person||person.role!=="giver"||!trial||trial.experiment_version!==EXPERIMENT.version)return NextResponse.json({error:"이 대화는 현재 증여자 실험에서만 사용할 수 있습니다."},{status:403});
+    if(!person||person.role!=="giver"||!trial||trial.experiment_version!==EXPERIMENT.version)return NextResponse.json({error:"이 대화는 현재 선물 주는 사람 실험에서만 사용할 수 있습니다."},{status:403});
     const {data:priorReply}=await db.from("trial_messages").select("content,payload").eq("trial_id",trial.id).eq("idempotency_key","chat-reply:"+input.idempotencyKey).maybeSingle();
     if(priorReply)return NextResponse.json({ok:true,response:priorReply.content,...priorReply.payload,idempotent:true});
     const phase=trial.current_phase;
@@ -37,9 +38,9 @@ export async function POST(request:Request){
       if(!exposure?.content_ready_at||exposure.active_tab_id!==input.tabId||!exposure.lease_until||new Date(exposure.lease_until).getTime()<Date.now())return NextResponse.json({error:"현재 활성 화면에서 내용을 확인한 뒤 입력해 주세요."},{status:409});
     }
     const {data:profile}=await db.from("recipient_profiles").select("profile_code,gift_budget,recent_interest,preference").eq("id",trial.profile_id).single();
-    if(!profile)throw new Error("수혜자 프로필을 찾지 못했습니다.");
+    if(!profile)throw new Error("선물 받는 사람 프로필을 찾지 못했습니다.");
     const {data:catalog,error:catalogError}=await db.from("product_catalog")
-      .select("category,search_tags_ko").eq("dataset_version",EXPERIMENT.candidateVersion)
+      .select("category,search_tags_ko").eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot")
       .eq("experiment_eligible",true).eq("is_active",true).contains("profile_codes",[profile.profile_code]).lte("price_experiment",profile.gift_budget);
     if(catalogError)throw catalogError;
     const allowedCategories=[...new Set((catalog??[]).map((x:any)=>x.category))] as string[];
@@ -49,11 +50,11 @@ export async function POST(request:Request){
     if(input.inputMode==="chat"&&!input.text)return NextResponse.json({error:"메시지를 입력해 주세요."},{status:400});
     const intent=input.inputMode==="chat"
       ?await interpretMessage({text:input.text,phase,condition:trial.execution_autonomy,allowedCategories,allowedTags})
-      :{intent:input.requestIntent??"criteria_update",selected_category:input.selectedCategory??null,preference_tags:input.preferenceTags??[],final_ordinal:null,clarification:null};
+      :{intent:input.requestIntent??"criteria_update",selected_category:input.selectedCategory??null,preference_tags:input.preferenceTags??[],selection_priority:input.selectedPriority??null,final_ordinal:null,clarification:null};
     const mode=input.inputMode;
-    await logEvent({participantId:person.id,trialId:trial.id,eventType:mode==="chat"?"chat_message_submitted":"dropdown_changed",phase,actorType:"participant",eventOrigin:"participant",inputMode:mode,intent:intent.intent,payload:{text:input.text,selectedCategory:intent.selected_category,preferenceTags:intent.preference_tags},idempotencyKey:"chat-input:"+input.idempotencyKey});
+    await logEvent({participantId:person.id,trialId:trial.id,eventType:mode==="chat"?"chat_message_submitted":"dropdown_changed",phase,actorType:"participant",eventOrigin:"participant",inputMode:mode,intent:intent.intent,payload:{text:input.text,selectedCategory:intent.selected_category,preferenceTags:intent.preference_tags,selectedPriority:intent.selection_priority},idempotencyKey:"chat-input:"+input.idempotencyKey});
     if(mode==="chat")await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:input.text,payload:{inputMode:mode,intent:intent.intent},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
-    else await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:`선택해서 입력하기 · 카테고리: ${intent.selected_category??"전체"} · 특성: ${intent.preference_tags.join(" · ")||"선택 없음"}`,payload:{inputMode:mode,intent:intent.intent},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
+    else await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:`선택해서 입력하기 · 중요 기준: ${intent.selection_priority??"선택 없음"} · 카테고리: ${intent.selected_category??"전체"} · 특성: ${intent.preference_tags.join(" · ")||"선택 없음"}`,payload:{inputMode:mode,intent:intent.intent},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
     let response="";let advanceRequested=false;let finalCandidateId:string|null=null;
     const taskIntent=["search_request","compare_request","final_choice"].includes(intent.intent);
     if(intent.intent==="clarify"){
@@ -77,6 +78,7 @@ export async function POST(request:Request){
       const nextState=phase==="criteria"?{...current,allowed_categories:allowedCategories,
         selected_category:mode==="dropdown"?intent.selected_category:intent.selected_category??current.selected_category,
         preference_tags:mode==="dropdown"?intent.preference_tags:[...new Set([...(current.preference_tags??[]),...intent.preference_tags])],
+        selection_priorities:mode==="dropdown"?(intent.selection_priority?[intent.selection_priority]:[]):intent.selection_priority?[intent.selection_priority]:(current.selection_priorities??[]),
         query_text:mode==="chat"?input.text:current.query_text,
         state_version:Number(current.state_version)+1,updated_at:new Date().toISOString()}:current;
       if(nextState.selected_category&&!allowedCategories.includes(nextState.selected_category))return NextResponse.json({error:"이 프로필에서 허용되지 않은 카테고리입니다."},{status:400});
@@ -86,7 +88,7 @@ export async function POST(request:Request){
       if(phase==="criteria"){
         const {error:stateError}=await db.from("trial_search_states").upsert(nextState,{onConflict:"trial_id"});
         if(stateError)throw stateError;
-        await logEvent({participantId:person.id,trialId:trial.id,eventType:"filters_applied",phase,actorType:"participant",inputMode:mode,intent:intent.intent,payload:{stateVersion:nextState.state_version,selectedCategory:nextState.selected_category,preferenceTags:nextState.preference_tags}});
+        await logEvent({participantId:person.id,trialId:trial.id,eventType:"filters_applied",phase,actorType:"participant",inputMode:mode,intent:intent.intent,payload:{stateVersion:nextState.state_version,selectedCategory:nextState.selected_category,preferenceTags:nextState.preference_tags,selectionPriorities:nextState.selection_priorities}});
       }
       if(intent.intent==="search_request"||intent.intent==="compare_request"){
         const {data:exposure}=await db.from("trial_phase_exposures").select("accumulated_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();

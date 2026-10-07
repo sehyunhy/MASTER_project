@@ -38,7 +38,7 @@ export async function generateTrialCandidates(db:any,trialId:string) {
     const result=await stimulusQuery.order("version",{ascending:false}).limit(1).maybeSingle();
     if(result.error)throw result.error;
     stimulus=result.data;
-    if(!stimulus||!stimulus.frozen_at)throw new Error(`수혜자 시나리오 ${trial.scenario_id}의 검토·동결된 자극이 없습니다. 연구자가 상품과 대화를 확인해야 합니다.`);
+    if(!stimulus||!stimulus.frozen_at)throw new Error(`선물 받는 사람 시나리오 ${trial.scenario_id}의 검토·동결된 자극이 없습니다. 연구자가 상품과 대화를 확인해야 합니다.`);
     const ids=(stimulus.candidate_snapshots??[]).map((p:any)=>p.source_product_id);
     if(ids.length!==3||new Set(ids).size!==3||!ids.includes(stimulus.final_source_product_id))throw new Error("동결 자극의 세 후보와 최종 상품을 확인해 주세요.");
     const {data:rows,error}=await db.from("product_catalog").select("*").eq("dataset_version",EXPERIMENT.candidateVersion).in("source_product_id",ids).eq("experiment_eligible",true);
@@ -60,7 +60,7 @@ export async function generateTrialCandidates(db:any,trialId:string) {
     const tags:string[]=state?.preference_tags??[];
     const filtered=(catalog??[]).filter((item:any)=>(!state?.selected_category||item.category===state.selected_category)
       &&(!tags.length||tags.some(tag=>(item.search_tags_ko??[]).includes(tag))));
-    picked=recommendCatalogItems(filtered,profile.profile_code,{},Number(profile.gift_budget));
+    picked=recommendCatalogItems(filtered,profile.profile_code,{priority:state?.selection_priorities?.[0]},Number(profile.gift_budget));
   }
   if(picked.length!==3)throw new Error(`프로필 ${profile.profile_code}의 적합한 실제 상품이 3개 미만입니다. 추가 자료가 필요합니다.`);
   const snapshots=stimulus?.candidate_snapshots??picked.map(snapshot);

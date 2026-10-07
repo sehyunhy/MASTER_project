@@ -43,7 +43,7 @@ export function recommendCatalogItems(items: CatalogItem[], profileCode: string,
 
 export function productFitReason(item: CatalogItem, preferences: GuidedPreference, profile: { hobbies?: string[]; preference?: string }): string {
   const reasons: string[] = [];
-  if (profile.hobbies?.length) reasons.push(`수혜자의 ${profile.hobbies.slice(0,2).join("·")} 관심사`);
+  if (profile.hobbies?.length) reasons.push(`선물 받는 사람의 ${profile.hobbies.slice(0,2).join("·")} 관심사`);
   if (preferences.context) reasons.push(`선택한 사용 상황(${preferences.context})`);
   if (preferences.trait) reasons.push(`선택한 기준(${preferences.trait})`);
   if (!reasons.length && profile.preference) reasons.push(profile.preference);

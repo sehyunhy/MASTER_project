@@ -5,6 +5,7 @@ const intentSchema=z.object({
   intent:z.enum(["criteria_update","search_request","compare_request","explain","final_choice","clarify"]),
   selected_category:z.string().nullable(),
   preference_tags:z.array(z.string()).max(5),
+  selection_priority:z.enum(["취향 적합성","실용성","개인적 의미"]).nullable(),
   final_ordinal:z.number().int().min(1).max(3).nullable(),
   clarification:z.string().max(180).nullable(),
 });
@@ -19,15 +20,16 @@ export async function interpretMessage(input:{text:string;phase:string;condition
   const {api,model}=client();
   const response=await api.messages.create({
     model,max_tokens:350,temperature:0,
-    system:"You classify a Korean gift-shopping utterance for a controlled experiment. Use only explicitly mentioned preferences; never infer demographics or alter scenario/budget. final_choice requires an unambiguous ordinal 1-3. A request to compare is compare_request; a request to find/recommend candidates is search_request. If ambiguous, clarify. Return exactly one interpret_message tool call.",
+    system:"You classify a Korean gift-shopping utterance for a controlled experiment. Use only explicitly mentioned preferences; never infer demographics or alter scenario/budget. A standalone mention of 실용성, 취향 적합성, or 개인적 의미 is a criteria_update with that selection_priority, even if no product tag is available. final_choice requires an unambiguous ordinal 1-3. A request to compare is compare_request; a request to find/recommend candidates is search_request. If ambiguous, clarify. Return exactly one interpret_message tool call.",
     messages:[{role:"user",content:JSON.stringify(input)}],
-    tools:[{name:"interpret_message",description:"Classify intent and explicit filters",input_schema:{type:"object",properties:{intent:{type:"string",enum:["criteria_update","search_request","compare_request","explain","final_choice","clarify"]},selected_category:{type:["string","null"]},preference_tags:{type:"array",items:{type:"string"}},final_ordinal:{type:["integer","null"]},clarification:{type:["string","null"]}},required:["intent","selected_category","preference_tags","final_ordinal","clarification"]}}],
+    tools:[{name:"interpret_message",description:"Classify intent and explicit filters",input_schema:{type:"object",properties:{intent:{type:"string",enum:["criteria_update","search_request","compare_request","explain","final_choice","clarify"]},selected_category:{type:["string","null"]},preference_tags:{type:"array",items:{type:"string"}},selection_priority:{type:["string","null"],enum:["취향 적합성","실용성","개인적 의미",null]},final_ordinal:{type:["integer","null"]},clarification:{type:["string","null"]}},required:["intent","selected_category","preference_tags","selection_priority","final_ordinal","clarification"]}}],
     tool_choice:{type:"tool",name:"interpret_message"},
   });
   const block=response.content.find((part:any)=>part.type==="tool_use"&&part.name==="interpret_message") as any;
   const parsed=intentSchema.safeParse(block?.input);
   if(!parsed.success)throw new Error("Claude의 입력 해석 결과를 확인할 수 없습니다. 다시 표현해 주세요.");
   const result=parsed.data;
+  if(result.selection_priority)result.preference_tags=result.preference_tags.filter(tag=>tag!==result.selection_priority);
   if(result.selected_category&&!input.allowedCategories.includes(result.selected_category))return {...result,intent:"clarify",selected_category:null,clarification:"이 시나리오에서 사용할 수 있는 상품 카테고리를 다시 선택해 주세요."};
   if(result.preference_tags.some(tag=>!input.allowedTags.includes(tag)))return {...result,intent:"clarify",preference_tags:[],clarification:"선택 가능한 특성을 다시 확인해 주세요."};
   return result;

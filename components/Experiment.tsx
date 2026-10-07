@@ -11,12 +11,25 @@ const phaseTitles: Record<string,string> = {
   criteria: "추천 기준 확인", candidates: "선물 후보 살펴보기", comparison: "후보 비교",
   decision: "최종 선물 선택", awaiting_survey: "종이 설문 안내", completed: "참여 완료",
 };
+const progressStages = [
+  {id:"criteria",label:"기준 입력"},
+  {id:"candidates",label:"후보 확인"},
+  {id:"comparison",label:"후보 비교"},
+  {id:"decision",label:"최종 결정"},
+] as const;
 
 function productFor(candidate: Row) {
   return candidate?.product_snapshot && Object.keys(candidate.product_snapshot).length
     ? candidate.product_snapshot : candidate?.gift_candidates ?? {};
 }
 function labelFor(order: number) { return String.fromCharCode(64 + order); }
+function participantFacingText(value:string){
+  return value.replace(/(증여자|수혜자)(은|는|이|가|을|를|의|에게|와|과)/g,(_match,role:string,particle:string)=>{
+    const name=role==="증여자"?"선물 주는 사람":"선물 받는 사람";
+    const replaced:Record<string,string>={은:"은",는:"은",이:"이",가:"이",을:"을",를:"을",의:"의",에게:"에게",와:"과",과:"과"};
+    return name+replaced[particle];
+  }).replaceAll("증여자","선물 주는 사람").replaceAll("수혜자","선물 받는 사람");
+}
 function waitForImageDecode(image:HTMLImageElement) {
   return new Promise<void>((resolve,reject)=>{
     const fallback=new URL("/products/category-illustration.svg",window.location.origin).href;
@@ -44,14 +57,14 @@ function CandidateCard({ candidate, details = false, selected = false, onSelect,
   const specs = p.specifications ?? {};
   const rows = (Array.isArray(specs)?specs.map((item:Row)=>[String(item.name??"규격"),item.value] as [string,unknown]):Object.entries(specs)).filter(([key,value]) => key !== "configuration_label" && value !== null && value !== undefined && value !== "").slice(0,12);
   return <article className={"experiment-candidate" + (selected ? " is-selected" : "")}>
-    <p className="eyebrow">후보 {labelFor(candidate.display_order)} · {p.category ?? "상품"} · 실험용 고정 환산가 {Number(p.price ?? 0).toLocaleString()}원</p>
+    <div className="experiment-candidate-summary"><span className="experiment-candidate-label">후보 {labelFor(candidate.display_order)} · {p.category ?? "상품"}</span><strong className="experiment-price">{Number(p.price ?? 0).toLocaleString()}원</strong></div>
     <div className="experiment-product-head">
       <img className="experiment-product-image" data-exposure-phase="candidates" src={p.image_url || "/products/category-illustration.svg"} alt="제품 종류를 나타내는 예시 이미지" loading="eager" onError={e => { const image=e.currentTarget;const fallback="/products/category-illustration.svg";if(image.getAttribute("src")!==fallback)image.src=fallback;else image.dataset.imageFailed="true"; }} />
       <div><h3>{p.product_name ?? "상품 정보"}</h3>{p.product_name_original&&<p className="eyebrow">원본명 · {p.product_name_original}</p>}{p.brand&&<p className="eyebrow">브랜드 · {p.brand}</p>}<p className="body">{p.description}</p><p className="eyebrow">2024년 8월 CSV 원본가 · {Number(p.price_original??0).toFixed(2)} {p.currency_original??"USD"}</p></div>
     </div>
     {p.fit_reason && <p className="experiment-fit"><b>추천 이유</b> · {p.fit_reason}</p>}
     {onToggle && <button type="button" className="button secondary" onClick={onToggle}>{details?"상세 접기":"상세 보기"}</button>}
-    {details && <div className="experiment-facts">
+    {details && <div className="experiment-facts"><p><b>가격 기준</b> · 실험용 고정 환산가</p>
       {specs.configuration_label && <p><b>구성</b> · {specs.configuration_label}</p>}
       {rows.map(([key,value]) => <p key={key}><b>{key}</b> · {Array.isArray(value) ? value.join(", ") : String(value)}</p>)}
       {Array.isArray(p.use_cases) && <p><b>사용 상황</b> · {p.use_cases.join(" · ")}</p>}
@@ -79,6 +92,7 @@ export function Experiment({ role }: { role: Role }) {
   const [chatText,setChatText]=useState("");
   const [dropdownOpen,setDropdownOpen]=useState(false);
   const [selectedCategory,setSelectedCategory]=useState("");
+  const [selectedPriority,setSelectedPriority]=useState("");
   const [selectedTags,setSelectedTags]=useState<string[]>([]);
   const [recipientStarted,setRecipientStarted]=useState(false);
   const [recipientCursor,setRecipientCursor]=useState(0);
@@ -95,6 +109,8 @@ export function Experiment({ role }: { role: Role }) {
   const phaseKeyRef = useRef("");
   const questionAcks = useRef(new Set<string>());
   const tabChannel = useRef<BroadcastChannel|null>(null);
+  const newestMessageRef = useRef<HTMLElement|null>(null);
+  const lastMessageCount = useRef({trialId:"",count:0});
 
   useEffect(() => {
     const id = sessionStorage.getItem("participantId") ?? "";
@@ -134,10 +150,21 @@ export function Experiment({ role }: { role: Role }) {
   const candidates: Row[] = useMemo(() => [...(trial?.trial_candidates ?? [])].sort((a:Row,b:Row)=>a.display_order-b.display_order),[trial?.trial_candidates]);
   const currentExposure = (trial?.trial_phase_exposures ?? []).find((x:Row)=>x.phase===phase);
   const searchState=data?.searchState;
-  const catalogOptions=data?.catalogOptions??{categories:[],tags:[]};
-  const criteriaFilled=Boolean(searchState?.query_text||searchState?.selected_category||searchState?.preference_tags?.length);
+  const catalogOptions=data?.catalogOptions??{categories:[],tags:[],eligibleCount:0,items:[]};
+  const filteredCatalogCount=(catalogOptions.items??[]).filter((item:Row)=>(!searchState?.selected_category||item.category===searchState.selected_category)&&(!(searchState?.preference_tags??[]).length||(searchState.preference_tags as string[]).some(tag=>(item.search_tags_ko??[]).includes(tag)))).length;
+  const catalogReady=filteredCatalogCount>=3;
+  const criteriaFilled=Boolean(searchState?.query_text||searchState?.selected_category||searchState?.preference_tags?.length||searchState?.selection_priorities?.length);
   const shownMessages=role==="recipient"?messages.slice(0,recipientCursor):messages;
-  useEffect(()=>{setSelectedCategory(searchState?.selected_category??"");setSelectedTags(searchState?.preference_tags??[]);},[trial?.id,searchState?.state_version]);
+  useEffect(()=>{
+    if(!trial)return;
+    const count=shownMessages.length;
+    const previous=lastMessageCount.current;
+    lastMessageCount.current={trialId:trial.id,count};
+    if(previous.trialId===trial.id&&previous.count>0&&count>previous.count&&visible){
+      requestAnimationFrame(()=>newestMessageRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
+    }
+  },[trial?.id,shownMessages.length,visible]);
+  useEffect(()=>{setSelectedCategory(searchState?.selected_category??"");setSelectedPriority(searchState?.selection_priorities?.[0]??"");setSelectedTags(searchState?.preference_tags??[]);},[trial?.id,searchState?.state_version]);
 
   useEffect(()=>{
     if(!trial||role!=="recipient")return;
@@ -330,13 +357,13 @@ export function Experiment({ role }: { role: Role }) {
   useEffect(() => {
     if (!trial || !ready || exposureMs<EXPERIMENT.minimumPhaseExposureMs || busy || !visible) return;
     const autonomous=role==="recipient" || phase==="comparison" || !guided;
-    if (!autonomous || (role==="giver"&&phase==="criteria"&&!criteriaFilled)) return;
+    if (!autonomous || (role==="giver"&&phase==="criteria"&&(!criteriaFilled||!catalogReady))) return;
     const key=trial.id+":"+phase;
     if (advancing.current===key) return;
     advancing.current=key;
     setBusy(true);
     phaseAction("advance",{requested:false}).then(()=>load()).catch(e=>{advancing.current="";setError((e as Error).message);}).finally(()=>setBusy(false));
-  },[trial?.id,phase,ready,exposureMs,busy,visible,role,guided,humanDecision,criteriaFilled,load]);
+  },[trial?.id,phase,ready,exposureMs,busy,visible,role,guided,humanDecision,criteriaFilled,catalogReady,load]);
 
   async function saveAnswer(questionId:string,answer:string) {
     setError("");
@@ -361,7 +388,7 @@ export function Experiment({ role }: { role: Role }) {
     if(role!=="giver"||!trial)return;
     setBusy(true);setError("");
     try{
-      const response=await fetch("/api/experiment/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({participantId,trialId:trial.id,tabId,inputMode,text:inputMode==="chat"?chatText:"",selectedCategory:selectedCategory||null,preferenceTags:selectedTags,requestIntent,idempotencyKey:crypto.randomUUID()})});
+      const response=await fetch("/api/experiment/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({participantId,trialId:trial.id,tabId,inputMode,text:inputMode==="chat"?chatText:"",selectedCategory:selectedCategory||null,selectedPriority:selectedPriority||null,preferenceTags:selectedTags,requestIntent,idempotencyKey:crypto.randomUUID()})});
       const result=await response.json();if(!response.ok)throw new Error(result.error??"대화를 저장하지 못했습니다.");
       if(inputMode==="chat")setChatText("");
       await load();
@@ -370,7 +397,7 @@ export function Experiment({ role }: { role: Role }) {
         const resultPick=await pick.json();if(!pick.ok)throw new Error(resultPick.error??"선택을 저장하지 못했습니다.");
         await load();
       }else if(result.advanceRequested){await phaseAction("advance",{requested:true});await load();}
-    }catch(e){setError((e as Error).message);}finally{setBusy(false);}
+    }catch(e){setError((e as Error).message);await load().catch(()=>{});}finally{setBusy(false);}
   }
 
   function startObservation(){
@@ -395,7 +422,7 @@ export function Experiment({ role }: { role: Role }) {
 
   async function toggleCandidate(candidate:Row) {
     const id=candidate.gift_candidate_id;
-    const isOpen=detailsOpen[id]??true;
+    const isOpen=detailsOpen[id]??false;
     setDetailsOpen(previous=>({...previous,[id]:!isOpen}));
     try {
       if(isOpen)await log("candidate_closed",id,labelFor(candidate.display_order));
@@ -437,46 +464,56 @@ export function Experiment({ role }: { role: Role }) {
   const exposurePercent=Math.min(100,Math.round(exposureMs/EXPERIMENT.minimumPhaseExposureMs*100));
   const allGuidedAnswers=EXPERIMENT.questions.every(q=>Boolean(answers[q.id]));
   const canRequest=ready && visible && exposureMs>=EXPERIMENT.minimumPhaseExposureMs && !busy;
-  const taskOwner=guided?"증여자":"AI";
-  const decisionOwner=humanDecision?"증여자":"AI";
+  const taskOwner=guided?"선물 주는 사람":"AI";
+  const decisionOwner=humanDecision?"선물 주는 사람":"AI";
+  const stageIndex=progressStages.findIndex(stage=>stage.id===phase);
 
-  return <main className="experiment-shell">
+  return <main className={`experiment-shell role-${role} phase-${phase}`}>
     <header className="experiment-header">
-      <p className="eyebrow">{role==="giver"?"증여자 참여":"수혜자 관찰"} · 선물 선택 {trial.trial_number} / 4</p>
+      <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>AI 선물 에이전트</span><span className="experiment-brand-role">{role==="giver"?"선물 주는 사람":"선물 받는 사람"}</span></div>
+      <p className="experiment-trial-counter">선물 선택 {trial.trial_number} / 4 · {role==="giver"?"직접 참여":"과정 관찰"}</p>
       <h1 className="title">{phaseTitles[phase] ?? "선물 추천 연구"}</h1>
-      <p className="body">이 단계에서 추천 기준과 후보가 만들어지고, 마지막에는 정해진 주체가 선물을 선택합니다.</p>
-      <div className="experiment-roles"><span>후보 구성·비교 · <b>{guided?"증여자가 요청":"AI가 자동 진행"}</b></span><span>최종 선택 · <b>{decisionOwner}</b></span></div>
+      <div className="experiment-roles"><span>후보 구성·비교 · <b>{guided?"선물 주는 사람이 요청":"AI가 자동 진행"}</b></span><span>최종 선택 · <b>{decisionOwner}</b></span></div>
+      <ol className="experiment-phase-step" aria-label="선물 선택 진행 단계">{progressStages.map((stage,index)=><li key={stage.id} className={index===stageIndex?"is-active":index<stageIndex||stageIndex<0?"is-complete":""} aria-current={index===stageIndex?"step":undefined}><span>{index+1}</span>{stage.label}</li>)}</ol>
     </header>
 
     {error && <p className="experiment-error" role="alert">{error}</p>}
 
-    <section className="experiment-profile card" aria-label="수혜자 정보">
-      <p className="eyebrow">수혜자 프로필</p><h2>{profile.name ?? profile.profile_code}</h2>
-      <p className="body">{profile.age}세 · {profile.occupation} · {profile.gift_occasion}</p>
-      <p className="body">관심사: {(profile.hobbies ?? []).join(" · ")}</p>
-      <p className="body">{profile.recent_interest} {profile.preference} {profile.dislike}</p>
-      <p className="body">고정 예산 {Number(profile.gift_budget ?? 0).toLocaleString()}원</p>
+    <div className="experiment-main-grid">
+    <aside className="experiment-context">
+    <section className="experiment-profile card" aria-label="선물 받는 사람 정보">
+      <p className="eyebrow">선물 받는 사람 정보</p>
+      <div className="experiment-profile-meta"><div><h2>{profile.name ?? profile.profile_code}</h2><p className="body">{profile.age}세 · {profile.occupation} · {profile.gift_occasion}</p></div><span className="experiment-budget">예산 {Number(profile.gift_budget ?? 0).toLocaleString()}원</span></div>
+      <p className="body"><b>관심사</b> · {(profile.hobbies ?? []).join(" · ")}</p>
+      <div className="experiment-profile-details"><p className="body">{profile.recent_interest}</p><p className="body">{profile.preference}</p><p className="body">{profile.dislike}</p></div>
     </section>
 
-    {role==="recipient"&&!recipientStarted&&<section className="experiment-task card"><h2>관찰을 시작합니다</h2><p className="body">{data?.stimulusSource==="recorded"?"이 화면은 기록된 대화를 검토해 만든 관찰 자극입니다.":"이 화면은 연구자가 구성하고 검토한 시나리오입니다."} 화면의 증여자 입력은 당신의 행동으로 기록되지 않습니다.</p><button className="button" onClick={startObservation}>관찰 시작</button></section>}
+    {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">AI 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY와 ANTHROPIC_MODEL을 확인하고 새 배포를 해야 합니다.</p>}
+    {role==="giver"&&phase==="criteria"&&!catalogReady&&<p className="experiment-error" role="status">현재 기준과 예산에 맞는 검토된 상품이 {filteredCatalogCount}개입니다. 후보 구성에는 3개가 필요합니다. {Number(catalogOptions.eligibleCount??0)>=3?"기준을 넓히거나 연구자에게 상품 준비를 요청해 주세요.":"연구자에게 상품 준비를 요청해 주세요."}</p>}
+    </aside>
+    <div className="experiment-workspace">
+
+    {role==="recipient"&&!recipientStarted&&<section className="experiment-task card"><h2>관찰을 시작합니다</h2><p className="body">{data?.stimulusSource==="recorded"?"이 화면은 기록된 대화를 검토해 만든 관찰 자극입니다.":"이 화면은 연구자가 구성하고 검토한 시나리오입니다."} 화면의 선물 주는 사람 입력은 당신의 행동으로 기록되지 않습니다.</p><button className="button" onClick={startObservation}>관찰 시작</button></section>}
 
     <section className="experiment-transcript" aria-label="추천 대화 기록">
       <div className="experiment-section-heading"><div><p className="eyebrow">저장되는 대화</p><h2>추천 과정</h2></div><span className="experiment-phase-pill">{phaseTitles[phase]}</span></div>
-      {shownMessages.map((message:Row)=>{
+      {shownMessages.map((message:Row,index:number)=>{
         const agent=message.actor_type==="agent"||message.actor_type==="system";
-        const speaker=message.simulated_actor_event||message.actor_type==="simulated_giver"?`증여자(${data?.stimulusSource==="recorded"?"기록 재생":"연구 시나리오"})`:agent?"AI":"증여자";
-        return <article key={message.id} className={"experiment-message "+(agent?"from-agent":"from-person")}>
+        const speaker=message.simulated_actor_event||message.actor_type==="simulated_giver"?`선물 주는 사람(${data?.stimulusSource==="recorded"?"기록 재생":"연구 시나리오"})`:agent?"AI":"선물 주는 사람";
+        return <article key={message.id} ref={index===shownMessages.length-1?newestMessageRef:null} className={"experiment-message "+(agent?"from-agent":"from-person")}>
+          <div className="experiment-message-bubble">
           <p className="experiment-speaker">{speaker}{message.simulated_actor_event&&<span> · 시나리오 재생</span>}</p>
-          {message.content && <p className="body">{message.content}</p>}
-          {role==="recipient"&&message.payload?.inputMode==="dropdown"&&<div className="scripted-dropdown" aria-label="증여자가 선택한 드롭다운 기준"><label>증여자가 선택한 상품 카테고리<select disabled value={message.payload.selectedCategory??""}><option>{message.payload.selectedCategory??""}</option></select></label><label>증여자가 선택한 중요 기준<select disabled value={message.payload.selectedPriority??""}><option>{message.payload.selectedPriority??""}</option></select></label></div>}
-          {message.message_type==="product_cards" && <div className="experiment-card-list">{candidates.map((candidate:Row)=><div key={candidate.id}><CandidateCard candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??true} onToggle={()=>void toggleCandidate(candidate)}/></div>)}</div>}
+          {message.content && <p className="body">{participantFacingText(message.content)}</p>}
+          {role==="recipient"&&message.payload?.inputMode==="dropdown"&&<div className="scripted-dropdown" aria-label="선물 주는 사람이 선택한 드롭다운 기준"><label>선물 주는 사람이 선택한 상품 카테고리<select disabled value={message.payload.selectedCategory??""}><option>{message.payload.selectedCategory??""}</option></select></label><label>선물 주는 사람이 선택한 중요 기준<select disabled value={message.payload.selectedPriority??""}><option>{message.payload.selectedPriority??""}</option></select></label></div>}
+          </div>
+          {message.message_type==="product_cards" && <div className="experiment-card-list">{candidates.map((candidate:Row)=><div key={candidate.id}><CandidateCard candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??false} onToggle={()=>void toggleCandidate(candidate)}/></div>)}</div>}
           {message.message_type==="comparison" && <div data-exposure-phase="comparison"><ComparisonTable rows={message.payload?.rows ?? []}/></div>}
         </article>;
       })}
       {!messages.length && <p className="body">추천 과정의 대화를 준비하고 있습니다.</p>}
     </section>
 
-    {role==="giver"&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task card" aria-label="증여자 대화 입력"><h2>AI와 대화하기</h2><p className="body">현재 상품 기록을 기준으로 질문할 수 있습니다. 과업과 최종 결정 권한은 위에 표시된 조건을 따릅니다.</p><div className="experiment-chat-input"><input className="field" value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatText.trim()&&(ready||phase==="decision"))void sendChat("chat");}} placeholder="선물 기준이나 상품에 대해 입력해 주세요" disabled={busy||!visible||(phase!=="decision"&&!ready)}/><button className="button" disabled={!chatText.trim()||busy||!visible||(phase!=="decision"&&!ready)} onClick={()=>void sendChat("chat")}>전송</button></div>{phase==="criteria"&&<><button type="button" className="button secondary" onClick={()=>setDropdownOpen(open=>!open)}>{dropdownOpen?"선택 메뉴 접기":"선택해서 입력하기"}</button>{dropdownOpen&&<div className="experiment-dropdown"><label>상품 카테고리<select className="field" value={selectedCategory} onChange={e=>setSelectedCategory(e.target.value)}><option value="">전체</option>{catalogOptions.categories.map((category:string)=><option key={category} value={category}>{category}</option>)}</select></label><label>선호 특성<select className="field" value={selectedTags[0]??""} onChange={e=>setSelectedTags(e.target.value?[e.target.value]:[])}><option value="">선택 없음</option>{catalogOptions.tags.map((tag:string)=><option key={tag} value={tag}>{tag}</option>)}</select></label><p className="eyebrow">고정 예산 {Number(profile.gift_budget??0).toLocaleString()}원 · 변경할 수 없습니다.</p><button className="button" disabled={busy||!visible||!ready} onClick={()=>void sendChat("dropdown")}>선택한 기준 적용</button></div>}</>}<p className="eyebrow">적용된 조건 · {searchState?.selected_category??"카테고리 전체"} · {(searchState?.preference_tags??[]).join(" · ")||"특성 선택 없음"}</p></section>}
+
 
     {(["criteria","candidates","comparison"].includes(phase)) && <section className="experiment-clock card" aria-live="polite">
       <div className="experiment-clock-line"><b>이 화면을 확인한 시간</b><span>{Math.floor(exposureMs/1000)} / {Math.ceil(EXPERIMENT.minimumPhaseExposureMs/1000)}초</span></div>
@@ -484,10 +521,10 @@ export function Experiment({ role }: { role: Role }) {
       <p className="eyebrow">{!visible?"화면이 보일 때 시간이 다시 누적됩니다.":!ready?"화면을 준비하고 있습니다.":exposureMs<EXPERIMENT.minimumPhaseExposureMs?"내용을 확인해 주세요.":"최소 확인 시간이 충족되었습니다."}</p>
     </section>}
 
-    {phase==="criteria" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">증여자가 과업 요청</p><h2>기준을 입력한 뒤 후보 구성을 요청해 주세요</h2><button className="button" disabled={!canRequest||!criteriaFilled} onClick={()=>void advance(true)}>{busy?"후보를 준비하고 있습니다…":"이 기준으로 후보를 찾아주세요"}</button>{!criteriaFilled&&<p className="eyebrow">대화 또는 선택 메뉴로 기준을 먼저 입력해 주세요.</p>}</section>}
+    {phase==="criteria" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">선물 주는 사람이 과업 요청</p><h2>기준을 입력한 뒤 후보 구성을 요청해 주세요</h2><button className="button" disabled={!canRequest||!criteriaFilled||!catalogReady} onClick={()=>void advance(true)}>{busy?"후보를 준비하고 있습니다…":"이 기준으로 후보를 찾아주세요"}</button>{!criteriaFilled&&<p className="eyebrow">대화에서 기준을 전송하거나 선택 메뉴에서 중요 기준을 적용해 주세요.</p>}</section>}
 
     {phase==="criteria" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">공통 기준 입력</p><h2>대화 또는 선택 메뉴로 기준을 알려주세요</h2><p className="body">기준을 입력하고 최소 노출시간이 지나면 AI가 후보 구성과 비교를 이어갑니다.</p>{!criteriaFilled&&<p className="eyebrow">아직 기준이 입력되지 않았습니다.</p>}</section>}
-    {phase==="criteria" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">관찰 안내</p><h2>증여자와 AI가 기준을 정하는 과정을 확인해 주세요</h2><p className="body">이 화면은 정해진 연구 시나리오를 보여 줍니다. 증여자의 대화나 최종 결정은 실제 입력으로 기록되지 않습니다.</p></section>}
+    {phase==="criteria" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">관찰 안내</p><h2>선물 주는 사람과 AI가 기준을 정하는 과정을 확인해 주세요</h2><p className="body">이 화면은 정해진 연구 시나리오를 보여 줍니다. 선물 주는 사람의 대화나 최종 결정은 실제 입력으로 기록되지 않습니다.</p></section>}
 
     {phase==="candidates" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">다음 과업</p><h2>후보를 확인한 뒤 비교를 요청해 주세요</h2><p className="body">각 후보의 규격, 추천 이유, 장점과 살펴볼 점을 읽어 주세요.</p><button className="button" disabled={!canRequest||candidates.length!==3} onClick={()=>void advance(true)}>{busy?"비교를 준비하고 있습니다…":"세 후보의 장단점을 비교해주세요"}</button></section>}
     {phase==="candidates" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">AI가 진행합니다</p><h2>세 후보의 정보를 확인해 주세요</h2><p className="body">최소 확인 시간이 지나면 AI가 같은 기준으로 세 후보를 비교합니다.</p></section>}
@@ -495,13 +532,17 @@ export function Experiment({ role }: { role: Role }) {
 
     {phase==="comparison" && <section className="experiment-task card"><p className="eyebrow">같은 기준으로 비교</p><h2>세 후보의 차이를 살펴봐 주세요</h2><p className="body">가격, 규격, 사용 상황, 장점, 살펴볼 점, 관리 방식을 나란히 확인합니다.</p>{role==="recipient"&&<p className="body">비교와 최종 선택은 연구 시나리오에 따라 진행됩니다.</p>}</section>}
 
-    {phase==="decision" && role==="giver" && humanDecision && <section className="experiment-task card"><p className="eyebrow">증여자의 최종 선택</p><h2>수혜자에게 줄 선물 하나를 골라주세요</h2><div className="experiment-card-list">{candidates.map((candidate:Row)=><CandidateCard key={candidate.id} candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??true} selected={selectedId===candidate.gift_candidate_id} onSelect={()=>void choose(candidate)} onToggle={()=>void toggleCandidate(candidate)}/>)}</div><button className="button" disabled={!selectedId||busy} onClick={()=>void finalizeChoice()}>{busy?"저장 중…":"최종 선물 확정"}</button></section>}
+    {phase==="decision" && role==="giver" && humanDecision && <section className="experiment-task card"><p className="eyebrow">선물 주는 사람의 최종 선택</p><h2>선물 받는 사람에게 줄 선물 하나를 골라주세요</h2><div className="experiment-card-list">{candidates.map((candidate:Row)=><CandidateCard key={candidate.id} candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??false} selected={selectedId===candidate.gift_candidate_id} onSelect={()=>void choose(candidate)} onToggle={()=>void toggleCandidate(candidate)}/>)}</div><button className="button" disabled={!selectedId||busy} onClick={()=>void finalizeChoice()}>{busy?"저장 중…":"최종 선물 확정"}</button></section>}
     {phase==="decision" && role==="giver" && !humanDecision && <section className="experiment-task card"><p className="eyebrow">AI의 최종 선택</p><h2>AI가 비교 기준에 따라 선물을 선택합니다</h2><p className="body">최종 선택과 근거는 대화 기록에 저장됩니다.</p></section>}
     {phase==="decision" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">최종 선택 관찰</p><h2>연구 시나리오의 선택 결과를 확인해 주세요</h2></section>}
 
-    {phase==="awaiting_survey" && (role!=="recipient"||recipientCursor>=messages.length) && <section className="experiment-task card"><p className="eyebrow">종이 설문</p><h2>{humanDecision?"증여자가 선택한 최종 선물":"AI가 선택한 최종 선물"}</h2><p className="body">{productFor(candidates.find((candidate:Row)=>candidate.gift_candidate_id===trial.final_selections?.[0]?.selected_candidate_id))?.product_name??"최종 선물 정보 확인 중"}</p><p className="body">연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다.</p><button className="button" disabled={busy} onClick={()=>void confirmPaperSurvey()}>{busy?"저장 중…":"종이 설문 작성 완료"}</button></section>}
+    {phase==="awaiting_survey" && (role!=="recipient"||recipientCursor>=messages.length) && <section className="experiment-task card"><p className="eyebrow">종이 설문</p><h2>{humanDecision?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}</h2><p className="body">{productFor(candidates.find((candidate:Row)=>candidate.gift_candidate_id===trial.final_selections?.[0]?.selected_candidate_id))?.product_name??"최종 선물 정보 확인 중"}</p><p className="body">연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다.</p><button className="button" disabled={busy} onClick={()=>void confirmPaperSurvey()}>{busy?"저장 중…":"종이 설문 작성 완료"}</button></section>}
     {role==="recipient"&&<button className="button secondary" disabled={busy} onClick={()=>void withdraw()}>연구 중단</button>}
     {phase==="completed" && <section className="experiment-task card"><h2>참여가 완료되었습니다</h2><a href="/complete" className="button">완료</a></section>}
+    {role==="giver"&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task experiment-composer card" aria-label="선물 주는 사람 대화 입력"><h2>{phase==="criteria"?"선물 기준 알려주기":"AI에게 질문하기"}</h2><p className="body">{phase==="criteria"?"아래에 원하는 기준을 적고 전송하거나, 선택 메뉴에서 중요 기준을 고르세요. 전송하면 AI가 응답합니다. 후보 요청은 기준을 저장하고 30초가 지난 뒤에 가능합니다.":"표시된 상품 정보에 관해 AI에게 질문할 수 있습니다."}</p>{phase==="criteria"&&<div className="experiment-quick-criteria" aria-label="기준 입력 예시"><span className="eyebrow">입력 예시</span>{["취향 적합성","실용성","개인적 의미"].map(example=><button type="button" key={example} className="experiment-quick-chip" onClick={()=>setChatText(example)} disabled={busy||!visible}>{example}</button>)}</div>}<div className="experiment-chat-input"><input className="field" value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatText.trim()&&(ready||phase==="decision"))void sendChat("chat");}} placeholder="선물 기준이나 상품에 대해 입력해 주세요" disabled={busy||!visible||(phase!=="decision"&&!ready)}/><button className="button" disabled={!chatText.trim()||busy||!visible||(phase!=="decision"&&!ready)} onClick={()=>void sendChat("chat")}>{busy?"처리 중…":"전송"}</button></div>{phase==="criteria"&&<><button type="button" className="button secondary" onClick={()=>setDropdownOpen(open=>!open)}>{dropdownOpen?"선택 메뉴 접기":"선택해서 입력하기"}</button>{dropdownOpen&&<div className="experiment-dropdown"><label>가장 중요한 기준<select className="field" value={selectedPriority} onChange={e=>setSelectedPriority(e.target.value)}><option value="">선택 없음</option><option value="취향 적합성">취향 적합성</option><option value="실용성">실용성</option><option value="개인적 의미">개인적 의미</option></select></label><label>상품 카테고리<select className="field" value={selectedCategory} onChange={e=>setSelectedCategory(e.target.value)}><option value="">전체</option>{catalogOptions.categories.map((category:string)=><option key={category} value={category}>{category}</option>)}</select></label><label>선호 특성<select className="field" value={selectedTags[0]??""} onChange={e=>setSelectedTags(e.target.value?[e.target.value]:[])}><option value="">선택 없음</option>{catalogOptions.tags.map((tag:string)=><option key={tag} value={tag}>{tag}</option>)}</select></label><p className="eyebrow">고정 예산 {Number(profile.gift_budget??0).toLocaleString()}원 · 변경할 수 없습니다.</p><button className="button" disabled={busy||!visible||!ready} onClick={()=>void sendChat("dropdown")}>선택한 기준 적용</button></div>}</>}<p className="eyebrow">저장된 기준 · {(searchState?.selection_priorities??[]).join(" · ")||"중요 기준 없음"} · {searchState?.selected_category??"카테고리 전체"} · {(searchState?.preference_tags??[]).join(" · ")||"특성 선택 없음"}</p></section>}
+
     {(["criteria","candidates","comparison"].includes(phase)) && role==="giver" && guided && phase!=="comparison" && <p className="experiment-note">연구 버전 {EXPERIMENT.version} · 참여자의 요청은 현재 단계를 확인한 뒤에만 저장됩니다.</p>}
+    </div>
+    </div>
   </main>;
 }

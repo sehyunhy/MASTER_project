@@ -8,7 +8,7 @@ import { join } from "node:path";
 function importCsv(csv:string){
   const dir=mkdtempSync(join(tmpdir(),"walmart-import-check-"));
   const sql=join(dir,"products.sql");
-  const result=spawnSync("python3",["scripts/importWalmartCsv.py","--csv",csv,"--fx-rate","1300","--round-krw","100","--output",sql],{encoding:"utf-8"});
+  const result=spawnSync("python3",["scripts/importWalmartCsv.py","--csv",csv,"--fx-rate","1300","--round-krw","100","--output",sql,"--csv-output",join(dir,"products-import.csv")],{encoding:"utf-8"});
   assert.equal(result.status,0,result.stderr);
   return {dir,sql,report:JSON.parse(readFileSync(join(dir,"products.report.json"),"utf8"))};
 }

@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       if(active.stimulus_id)stimulusQuery=stimulusQuery.eq("id",active.stimulus_id);
       const {data,error:stimulusError}=await stimulusQuery.order("version",{ascending:false}).limit(1).maybeSingle();
       if(stimulusError)throw stimulusError;
-      if(!data?.frozen_at)return NextResponse.json({error:`${active.scenario_id}에 검토·동결된 수혜자 관찰 자극이 없습니다. 연구자가 해당 프로필의 실제 상품과 대화를 검토해야 합니다.`},{status:409});
+      if(!data?.frozen_at)return NextResponse.json({error:`${active.scenario_id}에 검토·동결된 선물 받는 사람 관찰 자극이 없습니다. 연구자가 해당 프로필의 실제 상품과 대화를 검토해야 합니다.`},{status:409});
       stimulus=data;
       if(!active.stimulus_id){
         const {error:pinError}=await db.from("trials").update({stimulus_id:data.id,stimulus_version:data.version,stimulus_source:data.source_kind})
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
           await storeTranscriptMessage(db,{trialId:active.id,phase:"criteria",actorType:"simulated_giver",messageType:"text",content:t.criteria_giver,payload:{inputMode:"chat"},idempotencyKey:"scripted-criteria-text",simulatedActorEvent:true,eventOrigin:stimulus.source_kind,transcriptId:stimulus.id,stimulusVersion:stimulus.version});
           await storeTranscriptMessage(db,{trialId:active.id,phase:"criteria",actorType:"agent",messageType:"text",content:t.criteria_agent,payload:{scenarioId:active.scenario_id},idempotencyKey:"criteria-opening-v2",eventOrigin:stimulus.source_kind,transcriptId:stimulus.id,stimulusVersion:stimulus.version});
         } else {
-          await storeTranscriptMessage(db,{trialId:active.id,phase:"criteria",actorType:"agent",messageType:"text",content:`수혜자 ${profile?.name??"프로필"}의 관심사와 ${Number(profile?.gift_budget??0).toLocaleString()}원 예산을 확인했습니다. 선호 기준을 반영해 후보를 살펴보겠습니다.`,payload:{profileCode:profile?.profile_code,budget:profile?.gift_budget,profileVersion:active.profile_version},idempotencyKey:"criteria-opening-v2"});
+          await storeTranscriptMessage(db,{trialId:active.id,phase:"criteria",actorType:"agent",messageType:"text",content:`선물 받는 사람 ${profile?.name??"프로필"}의 관심사와 ${Number(profile?.gift_budget??0).toLocaleString()}원 예산을 확인했습니다. 선호 기준을 반영해 후보를 살펴보겠습니다.`,payload:{profileCode:profile?.profile_code,budget:profile?.gift_budget,profileVersion:active.profile_version},idempotencyKey:"criteria-opening-v2"});
         }
         const {data:messages}=await db.from("trial_messages").select("*").eq("trial_id",active.id).order("created_at");
         active.trial_messages=messages??[];
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       if(!hasDecision&&selection){
         const human=selection.selected_by==="human";
         const simulated=human&&p.role==="recipient";
-        await storeTranscriptMessage(db,{trialId:active.id,phase:"decision",actorType:simulated?"simulated_giver":human?"participant":"agent",messageType:"decision",content:`${human?"증여자가 선택한 최종 선물":"AI가 선택한 최종 선물"}: ${product.product_name??"선물 후보"}`,payload:{candidateId:selection.selected_candidate_id,productSnapshot:selectedCandidate?.product_snapshot??{}},idempotencyKey:"final-decision-v2",simulatedActorEvent:simulated,eventOrigin:p.role==="recipient"?stimulus?.source_kind:"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+        await storeTranscriptMessage(db,{trialId:active.id,phase:"decision",actorType:simulated?"simulated_giver":human?"participant":"agent",messageType:"decision",content:`${human?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}: ${product.product_name??"선물 후보"}`,payload:{candidateId:selection.selected_candidate_id,productSnapshot:selectedCandidate?.product_snapshot??{}},idempotencyKey:"final-decision-v2",simulatedActorEvent:simulated,eventOrigin:p.role==="recipient"?stimulus?.source_kind:"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
       }
       const hasSurveyPrompt=(active.trial_messages??[]).some((message:any)=>message.idempotency_key==="paper-survey-prompt-v2");
       if(!hasSurveyPrompt){
@@ -80,17 +80,17 @@ export async function GET(request: Request) {
       t.trial_phase_exposures=[...(t.trial_phase_exposures??[])].sort((a:any,b:any)=>a.phase.localeCompare(b.phase));
       t.trial_messages=[...(t.trial_messages??[])].sort((a:any,b:any)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
     }
-    let searchState:any=null;let catalogOptions:any={categories:[],tags:[]};
+    let searchState:any=null;let catalogOptions:any={categories:[],tags:[],eligibleCount:0};
     if(active&&p.role==="giver"){
       const {data:state,error:stateError}=await db.from("trial_search_states").select("*").eq("trial_id",active.id).maybeSingle();
       if(stateError)throw stateError;
       searchState=state;
       const {data:options,error:optionsError}=await db.from("product_catalog").select("category,search_tags_ko")
-        .eq("dataset_version",EXPERIMENT.candidateVersion).eq("experiment_eligible",true).eq("is_active",true)
+        .eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot").eq("experiment_eligible",true).eq("is_active",true)
         .contains("profile_codes",[active.recipient_profiles.profile_code]).lte("price_experiment",active.recipient_profiles.gift_budget);
       if(optionsError)throw optionsError;
-      catalogOptions={categories:[...new Set((options??[]).map((x:any)=>x.category))],tags:[...new Set((options??[]).flatMap((x:any)=>x.search_tags_ko??[]))]};
+      catalogOptions={categories:[...new Set((options??[]).map((x:any)=>x.category))],tags:[...new Set((options??[]).flatMap((x:any)=>x.search_tags_ko??[]))],eligibleCount:(options??[]).length,items:options??[]};
     }
-    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions });
+    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY&&process.env.ANTHROPIC_MODEL):undefined });
   } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "데이터를 불러오지 못했습니다." }, { status: 500 }); }
 }

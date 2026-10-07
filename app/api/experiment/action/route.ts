@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       if (error) throw error;
       const selected = link.product_snapshot ?? {};
       await logEvent({ participantId: v.data.participantId, trialId: v.data.trialId, eventType: "human_final_selection",phase:"decision",actorType:"participant",payload: { candidateId: v.data.candidateId },eventTarget:typeof input.eventTarget==="string"?input.eventTarget:undefined,eventValue:v.data.candidateId,idempotencyKey:"human-final-selection:"+v.data.trialId });
-      await storeTranscriptMessage(db,{trialId:v.data.trialId,phase:"decision",actorType:"participant",messageType:"decision",content:`증여자가 선택한 최종 선물: ${selected?.product_name??"선물 후보"}`,payload:{candidateId:v.data.candidateId,productSnapshot:selected??{}},idempotencyKey:"final-decision-v2",eventOrigin:"participant"});
+      await storeTranscriptMessage(db,{trialId:v.data.trialId,phase:"decision",actorType:"participant",messageType:"decision",content:`선물 주는 사람이 선택한 최종 선물: ${selected?.product_name??"선물 후보"}`,payload:{candidateId:v.data.candidateId,productSnapshot:selected??{}},idempotencyKey:"final-decision-v2",eventOrigin:"participant"});
       await storeTranscriptMessage(db,{trialId:v.data.trialId,phase:"awaiting_survey",actorType:"system",messageType:"text",content:"연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다. 종이 설문을 작성한 뒤 완료를 확인해 주세요.",payload:{paperSurveyTimeExcluded:true},idempotencyKey:"paper-survey-prompt-v2"});
       return NextResponse.json({ ok: true });
     }

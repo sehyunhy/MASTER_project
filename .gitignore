@@ -27,6 +27,7 @@ venv/
 # Source snapshot and generated DB imports stay local; apply through Supabase.
 walmart-products.csv
 supabase/seed-walmart-products.sql
+supabase/seed-walmart-products-import.csv
 supabase/seed-walmart-products.report.json
 supabase/seed-walmart-stimuli.sql
 supabase/seed-walmart-products-batches/
