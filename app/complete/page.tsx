@@ -1,0 +1,1 @@
+export default function CompletePage(){return <main className="shell"><div className="panel" style={{maxWidth:650,margin:"60px auto"}}><p className="eyebrow">연구 완료</p><h1 className="title">참여해 주셔서 감사합니다</h1><p className="body">모든 과정이 완료되었습니다. 연구자에게 완료 사실을 알려 주세요.</p></div></main>}
