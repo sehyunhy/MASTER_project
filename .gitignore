@@ -1,6 +1,25 @@
-node_modules
-.next
+# Dependencies and build output
+node_modules/
+.next/
+out/
+build/
+coverage/
+reports/
+.vercel/
+*.tsbuildinfo
+
+# Local credentials
 .env*
 !.env.example
-out
-coverage
+
+# OS and editor files
+.DS_Store
+.vscode/
+
+# Python tooling, if used for research data utilities
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/

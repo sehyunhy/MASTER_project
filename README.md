@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 선물 선택 실험 시스템
 
 Next.js App Router + React + TypeScript + Tailwind, Supabase PostgreSQL, Zod를 사용하는 연구 시스템 초기 구현입니다. 참가자 조건은 server-side DB에서만 결정하고 Claude와 Supabase service-role key는 브라우저로 보내지 않습니다.
@@ -84,3 +85,6 @@ Claude's current model identifier and Messages API usage are documented by [Anth
 ## Routes
 
 `/` · `/start` · `/training` · `/experiment/giver` · `/experiment/recipient` · `/complete` · `/admin`
+=======
+# MASTER_project
+>>>>>>> 71d236ce11f78fb9c31e46096415a38472115949
