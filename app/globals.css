@@ -37,8 +37,7 @@ button, input { font: inherit; }
 .experiment-fit, .experiment-facts { color: #53616a; font-size: 14px; line-height: 1.7; }
 .experiment-facts { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 4px 16px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .experiment-facts p { margin: 3px 0; }
-.experiment-shell.has-exposure-clock { padding-bottom: 170px; }
-.experiment-clock { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); left: 12px; z-index: 8; width: min(620px, calc(100vw - 24px)); margin: 0 auto; box-shadow: 0 8px 28px #20302b26; }
+.experiment-clock { position: fixed; top: 108px; right: max(20px, calc((100vw - 1040px) / 2 + 28px)); bottom: auto; left: auto; z-index: 8; width: min(400px, calc(50vw - 44px)); margin: 0; box-shadow: 0 8px 28px #20302b26; }
 .experiment-clock-line { font-size: 14px; }
 .experiment-clock-count { color: #176bdb; font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .experiment-progress { height: 8px; margin: 11px 0 5px; border-radius: 99px; background: #e8eeee; overflow: hidden; }
@@ -277,9 +276,8 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
   .experiment-chat-input { flex-direction: row; }
   .experiment-chat-input .button { width: auto; min-width: 58px; padding-inline: 10px; font-size: 13px; }
   .experiment-dropdown { grid-template-columns: 1fr; padding: 12px; }
-  .experiment-clock { padding: 10px 12px; }
-  .role-giver .experiment-clock { bottom: calc(82px + env(safe-area-inset-bottom)); }
-  .experiment-shell.role-giver.has-exposure-clock { padding-bottom: 235px; }
+  .experiment-shell.has-exposure-clock { padding-top: 100px; padding-bottom: 100px; }
+  .experiment-clock { top: calc(8px + env(safe-area-inset-top)); right: 12px; bottom: auto; left: 12px; width: auto; max-width: none; padding: 10px 12px; }
   .experiment-clock-line { align-items: flex-start; }
   .experiment-clock-line b { max-width: 52%; }
   .experiment-table { min-width: 620px; }
