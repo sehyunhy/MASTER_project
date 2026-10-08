@@ -6,7 +6,6 @@ export const EXPERIMENT = {
   promptVersion: "gift-agent-v4",
   sequenceVersion: "williams-v1",
   participantsPerRole: 40,
-  recipientPlaybackDurationMs: 90_000,
   minimumPhaseExposureMs: 20_000,
   heartbeatIntervalMs: 3_000,
   guidedAnalysisDurationMs: 5_000,

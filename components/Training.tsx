@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EXPERIMENT } from "@/config/experiment";
 
 type Role = "giver"|"recipient";
 type Step = {actor:"giver"|"agent"; text:string; kind?:"dropdown"|"candidates"|"comparison"|"decision"; segment:"criteria"|"candidates"|"comparison"|"decision"};
@@ -44,6 +45,7 @@ const practiceStages = [
   {id:"comparison",label:"후보 비교"},
   {id:"decision",label:"최종 결정"},
 ] as const;
+const TIMED_PRACTICE_SEGMENTS = new Set(["criteria","candidates","comparison"]);
 
 export function Training() {
   const [role,setRole]=useState<Role|null>(null);
@@ -59,11 +61,12 @@ export function Training() {
   const [input,setInput]=useState("");
   const [selectedPriority,setSelectedPriority]=useState("실용성");
   const [catalogProducts,setCatalogProducts]=useState<CatalogPracticeProduct[]>([]);
-  const [openDetails,setOpenDetails]=useState<string[]>([]);
+  const [stageExposureMs,setStageExposureMs]=useState(0);
   const [overrides,setOverrides]=useState<Record<number,string>>({});
   const [practiceSelected,setPracticeSelected]=useState(0);
   const [pageVisible,setPageVisible]=useState(true);
   const newestStepRef=useRef<HTMLElement|null>(null);
+  const stageClock=useRef({key:"",elapsed:0,lastTick:0});
   const practiceProducts=useMemo(()=>catalogProducts.map(product=>({
     ...product,id:product.source_product_id,name:product.product_name_ko??product.product_name_original,
     original:product.product_name_original,
@@ -105,18 +108,39 @@ export function Training() {
     return()=>{document.removeEventListener("visibilitychange",onVisibility);window.removeEventListener("focus",onVisibility);window.removeEventListener("blur",onVisibility);};
   },[]);
   useEffect(()=>{
-    if(!started||!role||cursor>=steps.length-1||!pageVisible||openDetails.length)return;
+    if(!started||role!=="recipient"||!active||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    const key=`${scenario}:${active.segment}`;
+    if(stageClock.current.key!==key){stageClock.current={key,elapsed:0,lastTick:performance.now()};setStageExposureMs(0);}
+    if(!pageVisible){stageClock.current.lastTick=0;return;}
+    stageClock.current.lastTick=performance.now();
+    const timer=window.setInterval(()=>{
+      const now=performance.now();
+      const delta=Math.max(0,Math.min(1000,now-stageClock.current.lastTick));
+      stageClock.current.elapsed+=delta;stageClock.current.lastTick=now;
+      setStageExposureMs(Math.floor(stageClock.current.elapsed));
+    },250);
+    return()=>window.clearInterval(timer);
+  },[started,role,scenario,active?.segment,pageVisible]);
+  useEffect(()=>{
+    if(!started||!role||cursor>=steps.length-1||!pageVisible)return;
     if(role==="giver"&&next?.actor==="giver")return;
-    const dwell=active?.kind==="candidates"||active?.kind==="comparison"?12000:1300;
+    if(role==="recipient"&&active&&next?.segment!==active.segment&&TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    const dwell=role==="giver"&&(active?.kind==="candidates"||active?.kind==="comparison")?12000:1300;
     const timer=window.setTimeout(()=>setCursor(value=>Math.min(value+1,steps.length-1)),dwell);
     return()=>window.clearTimeout(timer);
-  },[started,role,cursor,steps,next,active,pageVisible,openDetails.length]);
+  },[started,role,cursor,steps,next,active,pageVisible]);
+  useEffect(()=>{
+    if(role!=="recipient"||!started||!pageVisible||!active||!next||next.segment===active.segment||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    if(stageClock.current.key===`${scenario}:${active.segment}`&&stageClock.current.elapsed>=EXPERIMENT.minimumPhaseExposureMs)
+      setCursor(value=>Math.min(value+1,steps.length-1));
+  },[role,started,pageVisible,scenario,cursor,active,next,stageExposureMs,steps.length]);
   useEffect(()=>{
     if(!started||cursor<0)return;
     void api({action:"practice_event",eventType:"practice_step_shown",scenarioIndex:scenario,step:cursor}).catch(()=>{});
   },[cursor,started,scenario]);
   function start() {
-    setStarted(true);setCursor(role==="giver"?-1:0);setReplaySegment(null);setOpenDetails([]);
+    stageClock.current={key:"",elapsed:0,lastTick:0};setStageExposureMs(0);
+    setStarted(true);setCursor(role==="giver"?-1:0);setReplaySegment(null);
     void api({action:"practice_event",eventType:"observation_started",scenarioIndex:scenario}).catch(e=>setError((e as Error).message));
   }
   function send() {
@@ -130,12 +154,13 @@ export function Training() {
     try {
       const data=await api({action:"check",scenarioIndex:scenario,comparison,decision});
       if(!data.passed){setReplaySegment(data.replayPhase);return;}
-      if(scenario===0){setScenario(1);setCursor(-1);setStarted(false);setComparison("");setDecision("");setReplaySegment(null);setOverrides({});setPracticeSelected(0);setOpenDetails([]);return;}
+      if(scenario===0){setScenario(1);setCursor(-1);setStarted(false);setComparison("");setDecision("");setReplaySegment(null);setOverrides({});setPracticeSelected(0);stageClock.current={key:"",elapsed:0,lastTick:0};setStageExposureMs(0);return;}
       await api({action:"complete"});setFinished(true);
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
   function replay() {
     const index=replaySegment==="comparison"&&scenario===0?4:steps.findIndex(step=>step.segment===replaySegment);
+    stageClock.current={key:"",elapsed:0,lastTick:0};setStageExposureMs(0);
     setCursor(Math.max(0,index-1));setReplaySegment(null);setComparison("");setDecision("");setStarted(true);
     void api({action:"practice_event",eventType:"practice_replayed",scenarioIndex:scenario}).catch(()=>{});
   }
@@ -147,11 +172,12 @@ export function Training() {
       <p className="eyebrow">{role==="recipient"?"선물 받는 사람 관찰 연습":"선물 주는 사람 조작 연습"}</p>
       <h1 className="title">추천 과정 알아보기</h1>
       <p className="body">{role==="recipient"?"당신은 선물을 받는 사람입니다. 선물 주는 사람이 AI를 이용해 당신에게 줄 선물을 고르는 과정을 살펴보게 됩니다.":"당신은 선물을 주는 사람입니다. 대화와 선택 메뉴로 기준을 입력하고, 허용된 단계에서 후보 구성·비교·최종 선택을 진행합니다."}</p>
-      <p className="body">이 화면은 연구자가 구성한 연습용 시나리오입니다. 가격은 2024년 상품 기록을 연구용으로 고정 환산한 값이며 현재 판매가격이 아닙니다. 상품 상세를 열어 보는 동안 대화 재생이 멈춥니다.</p>
+      <p className="body">이 화면은 연구자가 구성한 연습용 시나리오입니다. 가격은 2024년 상품 기록을 연구용으로 고정 환산한 값이며 현재 판매가격이 아닙니다. 상품 상세를 열어 보는 시간도 현재 구간의 확인시간에 포함됩니다.</p>
     </header>
     <ol className="experiment-phase-step" aria-label="연습 진행 단계">{practiceStages.map((stage,index)=><li key={stage.id} className={index===currentStageIndex?"is-active":index<currentStageIndex?"is-complete":""} aria-current={index===currentStageIndex?"step":undefined}><span>{index+1}</span>{stage.label}</li>)}</ol>
     {error&&<p role="alert" className="experiment-error">{error}</p>}
     {!started?<section className="experiment-task card"><h2>{scenario===0?"선물 주는 사람 요청과 선물 주는 사람 최종 선택":"AI 자동 진행과 AI 최종 선택"}</h2><p className="body">선물 주는 사람의 입력, 상품 후보, 비교, 결정을 시간순으로 확인합니다.</p><button type="button" className="button" onClick={start}>{role==="recipient"?"관찰 시작":"연습 시작"}</button></section>:<>
+      {role==="recipient"&&TIMED_PRACTICE_SEGMENTS.has(currentStage)&&<section className="experiment-clock card" aria-live="polite"><div className="experiment-clock-line"><b>{practiceStages[currentStageIndex]?.label} 확인 시간</b><span>{Math.floor(Math.min(stageExposureMs,EXPERIMENT.minimumPhaseExposureMs)/1000)} / {EXPERIMENT.minimumPhaseExposureMs/1000}초</span></div><div className="experiment-progress"><span style={{width:`${Math.min(100,stageExposureMs/EXPERIMENT.minimumPhaseExposureMs*100)}%`}}/></div><p className="eyebrow">{pageVisible?"현재 화면을 보는 시간이 누적됩니다.":"다른 화면에 있는 동안 시간은 멈춥니다."}</p></section>}
       <section className="experiment-transcript" aria-label="연습용 대화 재생">
         <h2>선물 주는 사람과 AI의 대화</h2>
         {visibleSteps.map((step,index)=><article key={index} ref={index===visibleSteps.length-1?newestStepRef:null} className={"experiment-message "+(step.actor==="agent"?"from-agent":"from-person")}>
@@ -163,7 +189,7 @@ export function Training() {
             <img className="experiment-product-image" src={product.image_url} alt={`${product.name} 원본 상품 이미지`} loading="eager" onError={event=>{const image=event.currentTarget;if(image.getAttribute("src")!=="/products/category-illustration.svg")image.src="/products/category-illustration.svg";image.alt="원본 상품 이미지를 불러올 수 없습니다";}} />
             <h3>{product.name}</h3><p className="body">{product.facts?.use}</p><p className="body"><strong>종류·구성:</strong> {product.facts?.kind} · {product.facts?.size}</p>
             <p className="eyebrow">연구용 고정 가격 · 원본 기록 ${Number(product.price_original).toFixed(2)} (USD, {product.source_timestamp_raw?.slice(0,10)??"2024-08"})</p>
-            <details onToggle={event=>{const isOpen=event.currentTarget.open;setOpenDetails(old=>isOpen?[...new Set([...old,product.id])]:old.filter(id=>id!==product.id));if(isOpen)void api({action:"practice_event",eventType:"practice_product_detail_opened",scenarioIndex:scenario,sourceProductId:product.id}).catch(()=>{});}}><summary>원본 상품 정보 보기</summary><p className="body">{product.original}</p><p className="body">{product.description.slice(0,420)}{product.description.length>420?"…":""}</p>{product.source_url?.startsWith("https://www.walmart.com/")&&<a href={product.source_url} target="_blank" rel="noopener noreferrer">CSV에 기록된 상품 링크 (현재 내용은 다를 수 있음)</a>}</details>
+            <details onToggle={event=>{if(event.currentTarget.open)void api({action:"practice_event",eventType:"practice_product_detail_opened",scenarioIndex:scenario,sourceProductId:product.id}).catch(()=>{});}}><summary>원본 상품 정보 보기</summary><p className="body">{product.original}</p><p className="body">{product.description.slice(0,420)}{product.description.length>420?"…":""}</p>{product.source_url?.startsWith("https://www.walmart.com/")&&<a href={product.source_url} target="_blank" rel="noopener noreferrer">CSV에 기록된 상품 링크 (현재 내용은 다를 수 있음)</a>}</details>
           </div>)}</div>}
           {step.kind==="comparison"&&<div className="experiment-table-wrap"><table className="experiment-table"><thead><tr><th>비교 기준</th>{practiceProducts.map((p,i)=><th key={p.id}>{i+1}. {p.name}</th>)}</tr></thead><tbody>
             <tr><th>연구용 고정 가격</th>{practiceProducts.map(p=><td key={p.id}>{Number(p.price_experiment).toLocaleString()}원</td>)}</tr>
