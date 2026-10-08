@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       if(!hasDecision&&selection){
         const human=selection.selected_by==="human";
         const simulated=human&&p.role==="recipient";
-        await storeTranscriptMessage(db,{trialId:active.id,phase:"decision",actorType:simulated?"simulated_giver":human?"participant":"agent",messageType:"decision",content:`${human?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}: ${product.product_name??"선물 후보"}`,payload:{candidateId:selection.selected_candidate_id,productSnapshot:selectedCandidate?.product_snapshot??{}},idempotencyKey:"final-decision-v2",simulatedActorEvent:simulated,eventOrigin:p.role==="recipient"?stimulus?.source_kind:"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+        await storeTranscriptMessage(db,{trialId:active.id,phase:"decision",actorType:simulated?"simulated_giver":human?"participant":"agent",messageType:"decision",content:`${human?"선물 주는 사람이 선택한 최종 선물":"Agent가 선택한 최종 선물"}: ${product.product_name??"선물 후보"}`,payload:{candidateId:selection.selected_candidate_id,productSnapshot:selectedCandidate?.product_snapshot??{}},idempotencyKey:"final-decision-v2",simulatedActorEvent:simulated,eventOrigin:p.role==="recipient"?stimulus?.source_kind:"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
       }
       const hasSurveyPrompt=(active.trial_messages??[]).some((message:any)=>message.idempotency_key==="paper-survey-prompt-v2");
       if(!hasSurveyPrompt){

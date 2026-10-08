@@ -148,7 +148,7 @@ export async function POST(request:Request) {
         if(result.error||!result.data?.frozen_at)throw new Error("APPROVED_STIMULUS_REQUIRED");
         stimulus=result.data;
       }
-      if(phase==="criteria"&&participant.role==="giver") {
+      if(phase==="criteria"&&participant.role==="giver"&&guided) {
         const {data:searchState,error:stateError}=await db.from("trial_search_states").select("query_text,selected_category,preference_tags,selection_priorities").eq("trial_id",trial.id).maybeSingle();
         if(stateError)throw stateError;
         if(!searchState||(!searchState.query_text&&!searchState.selected_category&&!searchState.preference_tags?.length&&!searchState.selection_priorities?.length))return NextResponse.json({error:"대화나 선택 메뉴로 선물 기준을 먼저 입력해 주세요."},{status:409});
@@ -157,7 +157,7 @@ export async function POST(request:Request) {
       if(phase==="criteria"||phase==="candidates") {
         if(observing) actor=guided?"simulated_giver":"agent";
         else if(guided){if(body.requested!==true)return NextResponse.json({error:"요청 버튼으로 다음 과업을 시작해 주세요."},{status:403});actor="human_request";}
-        else {if(body.requested===true)return NextResponse.json({error:"이 조건에서는 AI가 다음 단계를 진행합니다."},{status:403});actor="agent";}
+        else {if(body.requested===true)return NextResponse.json({error:"이 조건에서는 Agent가 다음 단계를 진행합니다."},{status:403});actor="agent";}
       } else {
         actor=observing?(humanDecision?"simulated_giver":"agent"):(humanDecision?"human":"agent");
       }
@@ -254,7 +254,7 @@ export async function POST(request:Request) {
         if(finalizeError)throw finalizeError;
         await saveEvent(context,humanDecision?"human_final_selection":"agent_final_selection","decision",observing&&humanDecision?"simulated_giver":"agent",{candidateId:chosen.gift_candidate_id,simulatedPlayback:observing,taskId:"final_decision",reasonFocus:finalReasonFocus});
         await saveEvent(context,"agent_task_completed","decision","agent",{taskId:"final_decision",candidateId:chosen.gift_candidate_id});
-        await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:observing&&humanDecision?"simulated_giver":selectionActor==="human"?"participant":"agent",messageType:"decision",content:`${humanDecision?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}: ${chosen.product_snapshot?.product_name??"선물 후보"}`,payload:{candidateId:chosen.gift_candidate_id,productSnapshot:chosen.product_snapshot},idempotencyKey:"final-decision-v2",simulatedActorEvent:observing&&humanDecision,eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+        await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:observing&&humanDecision?"simulated_giver":selectionActor==="human"?"participant":"agent",messageType:"decision",content:`${humanDecision?"선물 주는 사람이 선택한 최종 선물":"Agent가 선택한 최종 선물"}: ${chosen.product_snapshot?.product_name??"선물 후보"}`,payload:{candidateId:chosen.gift_candidate_id,productSnapshot:chosen.product_snapshot},idempotencyKey:"final-decision-v2",simulatedActorEvent:observing&&humanDecision,eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
         await storeTranscriptMessage(db,{trialId:trial.id,phase:"awaiting_survey",actorType:"system",messageType:"text",content:"연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다. 종이 설문을 작성한 뒤 완료를 확인해 주세요.",payload:{paperSurveyTimeExcluded:true},idempotencyKey:"paper-survey-prompt-v2"});
         return NextResponse.json({phase:"awaiting_survey",selectedCandidateId:chosen.gift_candidate_id,selectedBy:selectionActor});
       }

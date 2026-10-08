@@ -56,7 +56,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ok:true});
       }
       if(!["observation_started","practice_replayed","practice_step_shown"].includes(input.eventType)||![0,1].includes(input.scenarioIndex))return NextResponse.json({error:"연습 이벤트가 올바르지 않습니다."},{status:400});
-      const actors=[ ["giver","giver","giver","agent","giver","agent","giver","agent"], ["giver","giver","agent","agent","agent","agent","agent"] ];
+      const actors=[ ["giver","giver","giver","agent","giver","agent","giver","agent"], ["agent","agent","agent","agent"] ];
       const scripted=input.eventType==="practice_step_shown";
       const step=Number(input.step);
       if(scripted&&(!Number.isInteger(step)||step<0||step>=actors[input.scenarioIndex].length))return NextResponse.json({error:"연습 단계가 올바르지 않습니다."},{status:400});

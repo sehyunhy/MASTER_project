@@ -29,7 +29,7 @@ function participantFacingText(value:string){
     const name=role==="증여자"?"선물 주는 사람":"선물 받는 사람";
     const replaced:Record<string,string>={은:"은",는:"은",이:"이",가:"이",을:"을",를:"을",의:"의",에게:"에게",와:"과",과:"과"};
     return name+replaced[particle];
-  }).replaceAll("증여자","선물 주는 사람").replaceAll("수혜자","선물 받는 사람");
+  }).replaceAll("증여자","선물 주는 사람").replaceAll("수혜자","선물 받는 사람").replaceAll("AI","Agent");
 }
 function waitForImageDecode(image:HTMLImageElement) {
   return new Promise<void>((resolve,reject)=>{
@@ -359,7 +359,7 @@ export function Experiment({ role }: { role: Role }) {
   useEffect(() => {
     if (!trial || !ready || exposureMs<EXPERIMENT.minimumPhaseExposureMs || busy || !visible) return;
     const autonomous=role==="recipient" || phase==="comparison" || !guided;
-    if (!autonomous || (role==="giver"&&phase==="criteria"&&(!criteriaFilled||!catalogReady))) return;
+    if (!autonomous || (role==="giver"&&phase==="criteria"&&!catalogReady)) return;
     const key=trial.id+":"+phase;
     if (advancing.current===key) return;
     advancing.current=key;
@@ -471,17 +471,17 @@ export function Experiment({ role }: { role: Role }) {
   const exposurePercent=Math.min(100,Math.round(exposureMs/EXPERIMENT.minimumPhaseExposureMs*100));
   const allGuidedAnswers=EXPERIMENT.questions.every(q=>Boolean(answers[q.id]));
   const canRequest=ready && visible && exposureMs>=EXPERIMENT.minimumPhaseExposureMs && !busy;
-  const taskOwner=guided?"선물 주는 사람":"AI";
-  const decisionOwner=humanDecision?"선물 주는 사람":"AI";
+  const taskOwner=guided?"선물 주는 사람":"Agent";
+  const decisionOwner=humanDecision?"선물 주는 사람":"Agent";
   const stageIndex=progressStages.findIndex(stage=>stage.id===phase);
 
   return <main className={`experiment-shell role-${role} phase-${phase}`}>
     <header className="experiment-header">
-      <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>AI 선물 에이전트</span><span className="experiment-brand-role">{role==="giver"?"선물 주는 사람":"선물 받는 사람"}</span></div>
+      <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>선물 추천 Agent</span><span className="experiment-brand-role">{role==="giver"?"선물 주는 사람":"선물 받는 사람"}</span></div>
       <p className="experiment-trial-counter">선물 선택 {trial.trial_number} / 4 · {role==="giver"?"직접 참여":"과정 관찰"}</p>
       <h1 className="title">{phaseTitles[phase] ?? "선물 추천 연구"}</h1>
-      <div className="experiment-roles"><span>후보 구성·비교 · <b>{guided?"선물 주는 사람이 요청":"AI가 자동 진행"}</b></span><span>최종 선택 · <b>{decisionOwner}</b></span></div>
-      <ol className="experiment-phase-step" aria-label="선물 선택 진행 단계">{progressStages.map((stage,index)=><li key={stage.id} className={index===stageIndex?"is-active":index<stageIndex||stageIndex<0?"is-complete":""} aria-current={index===stageIndex?"step":undefined}><span>{index+1}</span>{stage.label}</li>)}</ol>
+      <div className="experiment-roles"><span>후보 구성·비교 · <b>{guided?"선물 주는 사람이 요청":"Agent가 자동 진행"}</b></span><span>최종 선택 · <b>{decisionOwner}</b></span></div>
+      <ol className="experiment-phase-step" aria-label="선물 선택 진행 단계">{progressStages.map((stage,index)=><li key={stage.id} className={index===stageIndex?"is-active":index<stageIndex||stageIndex<0?"is-complete":""} aria-current={index===stageIndex?"step":undefined}><span>{index+1}</span>{!guided&&stage.id==="criteria"?"정보 확인":stage.label}</li>)}</ol>
     </header>
 
     {error && <p className="experiment-error" role="alert">{error}</p>}
@@ -495,7 +495,7 @@ export function Experiment({ role }: { role: Role }) {
       <div className="experiment-profile-details"><p className="body">{profile.recent_interest}</p><p className="body">{profile.preference}</p><p className="body">{profile.dislike}</p></div>
     </section>
 
-    {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">AI 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY를 확인하고 새 배포를 해야 합니다.</p>}
+    {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">Agent 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY를 확인하고 새 배포를 해야 합니다.</p>}
     {role==="giver"&&phase==="criteria"&&!catalogReady&&<p className="experiment-error" role="status">현재 기준과 예산에 맞는 검토된 상품이 {filteredCatalogCount}개입니다. 후보 구성에는 3개가 필요합니다. {Number(catalogOptions.eligibleCount??0)>=3?"기준을 넓히거나 연구자에게 상품 준비를 요청해 주세요.":"연구자에게 상품 준비를 요청해 주세요."}</p>}
     </aside>
     <div className="experiment-workspace">
@@ -506,7 +506,7 @@ export function Experiment({ role }: { role: Role }) {
       <div className="experiment-section-heading"><div><p className="eyebrow">저장되는 대화</p><h2>추천 과정</h2></div><span className="experiment-phase-pill">{phaseTitles[phase]}</span></div>
       {shownMessages.map((message:Row,index:number)=>{
         const agent=message.actor_type==="agent"||message.actor_type==="system";
-        const speaker=message.simulated_actor_event||message.actor_type==="simulated_giver"?`선물 주는 사람(${data?.stimulusSource==="recorded"?"기록 재생":"연구 시나리오"})`:agent?"AI":"선물 주는 사람";
+        const speaker=message.simulated_actor_event||message.actor_type==="simulated_giver"?`선물 주는 사람(${data?.stimulusSource==="recorded"?"기록 재생":"연구 시나리오"})`:agent?"Agent":"선물 주는 사람";
         return <article key={message.id} ref={index===shownMessages.length-1?newestMessageRef:null} className={"experiment-message "+(agent?"from-agent":"from-person")}>
           <div className="experiment-message-bubble">
           <p className="experiment-speaker">{speaker}{message.simulated_actor_event&&<span> · 시나리오 재생</span>}</p>
@@ -530,25 +530,25 @@ export function Experiment({ role }: { role: Role }) {
 
     {phase==="criteria" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">선물 주는 사람이 과업 요청</p><h2>기준을 입력한 뒤 후보 구성을 요청해 주세요</h2><button className="button" disabled={!canRequest||!criteriaFilled||!catalogReady} onClick={()=>void advance(true)}>{busy?"후보를 준비하고 있습니다…":"이 기준으로 후보를 찾아주세요"}</button>{!criteriaFilled&&<p className="eyebrow">대화에서 기준을 전송하거나 선택 메뉴에서 중요 기준을 적용해 주세요.</p>}</section>}
 
-    {phase==="criteria" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">공통 기준 입력</p><h2>대화 또는 선택 메뉴로 기준을 알려주세요</h2><p className="body">기준을 입력하고 최소 노출시간이 지나면 AI가 후보 구성과 비교를 이어갑니다.</p>{!criteriaFilled&&<p className="eyebrow">아직 기준이 입력되지 않았습니다.</p>}</section>}
-    {phase==="criteria" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">관찰 안내</p><h2>선물 주는 사람과 AI가 기준을 정하는 과정을 확인해 주세요</h2><p className="body">이 화면은 정해진 연구 시나리오를 보여 줍니다. 선물 주는 사람의 대화나 최종 결정은 실제 입력으로 기록되지 않습니다.</p></section>}
+    {phase==="criteria" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">Agent 자동 진행</p><h2>선물 받는 사람의 정보를 확인해 주세요</h2><p className="body">Agent가 화면에 제공된 관심사·선호와 고정 예산을 사용해 후보 구성과 비교를 진행합니다. 추가 기준이나 인물 정보를 입력할 필요가 없습니다.</p></section>}
+    {phase==="criteria" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">관찰 안내</p><h2>선물 주는 사람과 Agent가 기준을 정하는 과정을 확인해 주세요</h2><p className="body">이 화면은 정해진 연구 시나리오를 보여 줍니다. 선물 주는 사람의 대화나 최종 결정은 실제 입력으로 기록되지 않습니다.</p></section>}
 
     {phase==="candidates" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">다음 과업</p><h2>후보를 확인한 뒤 비교를 요청해 주세요</h2><p className="body">각 후보의 규격, 추천 이유, 장점과 살펴볼 점을 읽어 주세요.</p><button className="button" disabled={!canRequest||candidates.length!==3} onClick={()=>void advance(true)}>{busy?"비교를 준비하고 있습니다…":"세 후보의 장단점을 비교해주세요"}</button></section>}
-    {phase==="candidates" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">AI가 진행합니다</p><h2>세 후보의 정보를 확인해 주세요</h2><p className="body">최소 확인 시간이 지나면 AI가 같은 기준으로 세 후보를 비교합니다.</p></section>}
+    {phase==="candidates" && role==="giver" && !guided && <section className="experiment-task card"><p className="eyebrow">Agent가 진행합니다</p><h2>세 후보의 정보를 확인해 주세요</h2><p className="body">최소 확인 시간이 지나면 Agent가 같은 기준으로 세 후보를 비교합니다.</p></section>}
     {phase==="candidates" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">후보 관찰</p><h2>세 선물 후보와 구성을 확인해 주세요</h2></section>}
 
     {phase==="comparison" && <section className="experiment-task card"><p className="eyebrow">같은 기준으로 비교</p><h2>세 후보의 차이를 살펴봐 주세요</h2><p className="body">가격, 규격, 사용 상황, 장점, 살펴볼 점, 관리 방식을 나란히 확인합니다.</p>{role==="recipient"&&<p className="body">비교와 최종 선택은 연구 시나리오에 따라 진행됩니다.</p>}</section>}
 
     {phase==="decision" && role==="giver" && humanDecision && <section className="experiment-task card"><p className="eyebrow">선물 주는 사람의 최종 선택</p><h2>선물 받는 사람에게 줄 선물 하나를 골라주세요</h2><div className="experiment-card-list">{candidates.map((candidate:Row)=><CandidateCard key={candidate.id} candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??false} selected={selectedId===candidate.gift_candidate_id} onSelect={()=>void choose(candidate)} onToggle={()=>void toggleCandidate(candidate)}/>)}</div><button className="button" disabled={!selectedId||busy} onClick={()=>void finalizeChoice()}>{busy?"저장 중…":"최종 선물 확정"}</button></section>}
-    {phase==="decision" && role==="giver" && !humanDecision && <section className="experiment-task card"><p className="eyebrow">AI의 최종 선택</p><h2>AI가 비교 기준에 따라 선물을 선택합니다</h2><p className="body">최종 선택과 근거는 대화 기록에 저장됩니다.</p></section>}
+    {phase==="decision" && role==="giver" && !humanDecision && <section className="experiment-task card"><p className="eyebrow">Agent의 최종 선택</p><h2>Agent가 비교 기준에 따라 선물을 선택합니다</h2><p className="body">최종 선택과 근거는 대화 기록에 저장됩니다.</p></section>}
     {phase==="decision" && role==="recipient" && <section className="experiment-task card"><p className="eyebrow">최종 선택 관찰</p><h2>연구 시나리오의 선택 결과를 확인해 주세요</h2></section>}
 
-    {phase==="awaiting_survey" && (role!=="recipient"||recipientCursor>=messages.length) && <section className="experiment-task card"><p className="eyebrow">종이 설문</p><h2>{humanDecision?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}</h2><p className="body">{productFor(candidates.find((candidate:Row)=>candidate.gift_candidate_id===trial.final_selections?.[0]?.selected_candidate_id))?.product_name??"최종 선물 정보 확인 중"}</p><p className="body">연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다.</p><button className="button" disabled={busy} onClick={()=>void confirmPaperSurvey()}>{busy?"저장 중…":"종이 설문 작성 완료"}</button></section>}
+    {phase==="awaiting_survey" && (role!=="recipient"||recipientCursor>=messages.length) && <section className="experiment-task card"><p className="eyebrow">종이 설문</p><h2>{humanDecision?"선물 주는 사람이 선택한 최종 선물":"Agent가 선택한 최종 선물"}</h2><p className="body">{productFor(candidates.find((candidate:Row)=>candidate.gift_candidate_id===trial.final_selections?.[0]?.selected_candidate_id))?.product_name??"최종 선물 정보 확인 중"}</p><p className="body">연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다.</p><button className="button" disabled={busy} onClick={()=>void confirmPaperSurvey()}>{busy?"저장 중…":"종이 설문 작성 완료"}</button></section>}
     {role==="recipient"&&<button className="button secondary" disabled={busy} onClick={()=>void withdraw()}>연구 중단</button>}
     {phase==="completed" && <section className="experiment-task card"><h2>참여가 완료되었습니다</h2><a href="/complete" className="button">완료</a></section>}
-    {role==="giver"&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task experiment-composer card" aria-label="선물 주는 사람 대화 입력">
-      <h2>{phase==="criteria"?"선물 기준 알려주기":"AI에게 질문하기"}</h2>
-      <p className="body">{phase==="criteria"?"원하는 기준을 여러 개 고르거나 직접 적어 전송해 주세요. 후보 요청은 기준을 저장하고 20초가 지난 뒤 가능합니다.":"표시된 상품 정보에 관해 AI에게 질문할 수 있습니다."}</p>
+    {role==="giver"&&(phase!=="criteria"||guided)&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task experiment-composer card" aria-label="선물 주는 사람 대화 입력">
+      <h2>{phase==="criteria"?"선물 기준 알려주기":"Agent에게 질문하기"}</h2>
+      <p className="body">{phase==="criteria"?"원하는 기준을 여러 개 고르거나 직접 적어 전송해 주세요. 후보 요청은 기준을 저장하고 20초가 지난 뒤 가능합니다.":"표시된 상품 정보에 관해 Agent에게 질문할 수 있습니다."}</p>
       {phase==="criteria"&&<div className="experiment-quick-criteria" aria-label="추천 기준 선택"><span className="eyebrow">추천 기준</span>{RECOMMENDATION_CRITERIA.map(priority=><button type="button" key={priority} className={"experiment-quick-chip"+(selectedPriorities.includes(priority)?" is-selected":"")} aria-pressed={selectedPriorities.includes(priority)} onClick={()=>togglePriority(priority)} disabled={busy||!visible}>{priority}</button>)}</div>}
       <div className="experiment-chat-input"><input className="field" value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&(chatText.trim()||phase==="criteria"&&selectedPriorities.length)&&(ready||phase==="decision"))void sendChat(chatText.trim()?"chat":"dropdown");}} placeholder="예: 실용성, 취향 적합성" disabled={busy||!visible||(phase!=="decision"&&!ready)}/><button className="button" disabled={!(chatText.trim()||phase==="criteria"&&selectedPriorities.length)||busy||!visible||(phase!=="decision"&&!ready)} onClick={()=>void sendChat(chatText.trim()?"chat":"dropdown")}>{busy?"처리 중…":"전송"}</button></div>
       {phase==="criteria"&&<><button type="button" className="button secondary" onClick={()=>setDropdownOpen(open=>!open)}>{dropdownOpen?"선택 메뉴 접기":"선택해서 입력하기"}</button>{dropdownOpen&&<div className="experiment-dropdown"><fieldset className="experiment-criteria-menu"><legend>추천 기준 · 여러 개 선택 가능</legend>{RECOMMENDATION_CRITERIA.map(priority=><label key={priority}><input type="checkbox" checked={selectedPriorities.includes(priority)} onChange={()=>togglePriority(priority)}/>{priority}</label>)}</fieldset><label>상품 카테고리<select className="field" value={selectedCategory} onChange={e=>setSelectedCategory(e.target.value)}><option value="">전체</option>{catalogOptions.categories.map((category:string)=><option key={category} value={category}>{category}</option>)}</select></label><label>선호 특성<select className="field" value={selectedTags[0]??""} onChange={e=>setSelectedTags(e.target.value?[e.target.value]:[])}><option value="">선택 없음</option>{catalogOptions.tags.map((tag:string)=><option key={tag} value={tag}>{tag}</option>)}</select></label><p className="eyebrow">고정 예산 {Number(profile.gift_budget??0).toLocaleString()}원 · 변경할 수 없습니다.</p><button className="button" disabled={busy||!visible||!ready} onClick={()=>void sendChat("dropdown")}>선택한 기준 적용</button></div>}</>}

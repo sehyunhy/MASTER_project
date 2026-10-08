@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EXPERIMENT } from "@/config/experiment";
+import { EXPERIMENT, PROFILES } from "@/config/experiment";
 
 type Role = "giver"|"recipient";
 type Step = {actor:"giver"|"agent"; text:string; kind?:"dropdown"|"candidates"|"comparison"|"decision"; segment:"criteria"|"candidates"|"comparison"|"decision"};
@@ -26,18 +26,15 @@ const scenarioSteps: Step[][] = [
     {actor:"agent",segment:"decision",text:"선물 주는 사람이 선택한 최종 선물: 올드베이 클래식 시즈닝"},
   ],
   [
-    {actor:"giver",kind:"dropdown",segment:"criteria",text:"선택해서 입력하기 · 카테고리: 전체 · 중요 기준: 실용성"},
-    {actor:"giver",segment:"criteria",text:"집에서 요리를 즐기는 사람에게 줄 선물을 찾고 있어요."},
-    {actor:"agent",segment:"criteria",text:"제공된 기준으로 후보 구성과 비교를 이어가겠습니다."},
+    {actor:"agent",segment:"criteria",text:"제공된 선물 받는 사람의 관심사·선호와 고정 예산 50,000원을 확인했습니다. 추가 입력 없이 상품 정보를 살펴보겠습니다."},
     {actor:"agent",kind:"candidates",segment:"candidates",text:"기록된 상품 정보에서 선물 후보 세 개를 찾았습니다."},
-    {actor:"agent",kind:"comparison",segment:"comparison",text:"같은 세 후보를 원본 상품 정보로 비교했습니다."},
-    {actor:"agent",kind:"decision",segment:"decision",text:"첫 번째 후보를 최종 선물로 결정했습니다."},
-    {actor:"agent",segment:"decision",text:"AI가 선택한 최종 선물: 올드베이 클래식 시즈닝"},
+    {actor:"agent",kind:"comparison",segment:"comparison",text:"같은 세 후보의 연구용 가격, 종류·구성, 원본 설명의 사용 상황을 비교했습니다."},
+    {actor:"agent",kind:"decision",segment:"decision",text:"세 후보의 기록된 상품 정보를 비교한 뒤 첫 번째 후보를 최종 선물로 결정했습니다."},
   ],
 ];
 const questions = [
-  "후보 비교는 AI가 선물 주는 사람의 요청으로 시작됐습니까, AI가 자동으로 시작했습니까?",
-  "최종 선물을 결정한 주체는 선물 주는 사람입니까, AI입니까?",
+  "후보 비교는 Agent가 선물 주는 사람의 요청으로 시작됐습니까, Agent가 자동으로 시작했습니까?",
+  "최종 선물을 결정한 주체는 선물 주는 사람입니까, Agent입니까?",
 ];
 const practiceStages = [
   {id:"criteria",label:"기준 입력"},
@@ -46,6 +43,7 @@ const practiceStages = [
   {id:"decision",label:"최종 결정"},
 ] as const;
 const TIMED_PRACTICE_SEGMENTS = new Set(["criteria","candidates","comparison"]);
+const practiceProfile = PROFILES.find(profile=>profile.id==="R4v2");
 
 export function Training() {
   const [role,setRole]=useState<Role|null>(null);
@@ -79,6 +77,7 @@ export function Training() {
   const next=steps[cursor+1];
   const currentStage=active?.segment??next?.segment??"criteria";
   const currentStageIndex=practiceStages.findIndex(stage=>stage.id===currentStage);
+  const timedPlayback=role==="recipient"||scenario===1;
   useEffect(()=>{
     if(!started||cursor<0||!pageVisible)return;
     const frame=requestAnimationFrame(()=>newestStepRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
@@ -108,7 +107,7 @@ export function Training() {
     return()=>{document.removeEventListener("visibilitychange",onVisibility);window.removeEventListener("focus",onVisibility);window.removeEventListener("blur",onVisibility);};
   },[]);
   useEffect(()=>{
-    if(!started||role!=="recipient"||!active||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    if(!started||!timedPlayback||!active||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
     const key=`${scenario}:${active.segment}`;
     if(stageClock.current.key!==key){stageClock.current={key,elapsed:0,lastTick:performance.now()};setStageExposureMs(0);}
     if(!pageVisible){stageClock.current.lastTick=0;return;}
@@ -120,27 +119,27 @@ export function Training() {
       setStageExposureMs(Math.floor(stageClock.current.elapsed));
     },250);
     return()=>window.clearInterval(timer);
-  },[started,role,scenario,active?.segment,pageVisible]);
+  },[started,timedPlayback,scenario,active?.segment,pageVisible]);
   useEffect(()=>{
     if(!started||!role||cursor>=steps.length-1||!pageVisible)return;
     if(role==="giver"&&next?.actor==="giver")return;
-    if(role==="recipient"&&active&&next?.segment!==active.segment&&TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    if(timedPlayback&&active&&next?.segment!==active.segment&&TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
     const dwell=role==="giver"&&(active?.kind==="candidates"||active?.kind==="comparison")?12000:1300;
     const timer=window.setTimeout(()=>setCursor(value=>Math.min(value+1,steps.length-1)),dwell);
     return()=>window.clearTimeout(timer);
-  },[started,role,cursor,steps,next,active,pageVisible]);
+  },[started,role,timedPlayback,cursor,steps,next,active,pageVisible]);
   useEffect(()=>{
-    if(role!=="recipient"||!started||!pageVisible||!active||!next||next.segment===active.segment||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
+    if(!timedPlayback||!started||!pageVisible||!active||!next||next.segment===active.segment||!TIMED_PRACTICE_SEGMENTS.has(active.segment))return;
     if(stageClock.current.key===`${scenario}:${active.segment}`&&stageClock.current.elapsed>=EXPERIMENT.minimumPhaseExposureMs)
       setCursor(value=>Math.min(value+1,steps.length-1));
-  },[role,started,pageVisible,scenario,cursor,active,next,stageExposureMs,steps.length]);
+  },[timedPlayback,started,pageVisible,scenario,cursor,active,next,stageExposureMs,steps.length]);
   useEffect(()=>{
     if(!started||cursor<0)return;
     void api({action:"practice_event",eventType:"practice_step_shown",scenarioIndex:scenario,step:cursor}).catch(()=>{});
   },[cursor,started,scenario]);
   function start() {
     stageClock.current={key:"",elapsed:0,lastTick:0};setStageExposureMs(0);
-    setStarted(true);setCursor(role==="giver"?-1:0);setReplaySegment(null);
+    setStarted(true);setCursor(role==="giver"&&scenario===0?-1:0);setReplaySegment(null);
     void api({action:"practice_event",eventType:"observation_started",scenarioIndex:scenario}).catch(e=>setError((e as Error).message));
   }
   function send() {
@@ -168,20 +167,21 @@ export function Training() {
   if(finished)return <main className="experiment-shell training-shell"><section className="panel" style={{maxWidth:820,margin:"24px auto"}}><p className="eyebrow">역할별 연습 완료</p><h1 className="title">연구를 시작할 수 있습니다</h1><p className="body">본실험에서는 과업 진행 방식과 최종 결정 주체의 다른 조합도 나타날 수 있습니다. 심리척도는 종이 설문으로 응답합니다.</p><a className="button" href={role==="giver"?"/experiment/giver":"/experiment/recipient"}>본실험 시작</a></section></main>;
   return <main className="experiment-shell training-shell">
     <header className="experiment-header">
-      <div className="experiment-brand"><strong>AI 선물 에이전트</strong><span>연습 {scenario+1} / 2</span></div>
+      <div className="experiment-brand"><strong>선물 추천 Agent</strong><span>연습 {scenario+1} / 2</span></div>
       <p className="eyebrow">{role==="recipient"?"선물 받는 사람 관찰 연습":"선물 주는 사람 조작 연습"}</p>
       <h1 className="title">추천 과정 알아보기</h1>
-      <p className="body">{role==="recipient"?"당신은 선물을 받는 사람입니다. 선물 주는 사람이 AI를 이용해 당신에게 줄 선물을 고르는 과정을 살펴보게 됩니다.":"당신은 선물을 주는 사람입니다. 대화와 선택 메뉴로 기준을 입력하고, 허용된 단계에서 후보 구성·비교·최종 선택을 진행합니다."}</p>
+      <p className="body">{role==="recipient"?"당신은 선물을 받는 사람입니다. 선물 주는 사람과 Agent가 당신에게 줄 선물을 고르는 과정을 살펴보게 됩니다.":scenario===0?"당신은 선물을 주는 사람입니다. 기준을 입력하고 후보 구성·비교를 요청한 뒤 최종 선물을 직접 선택합니다.":"이 연습에서는 제공된 선물 받는 사람 정보를 바탕으로 Agent가 후보 구성·비교·최종 선택을 진행합니다. 추가 기준이나 인물 정보를 입력하지 않습니다."}</p>
       <p className="body">이 화면은 연구자가 구성한 연습용 시나리오입니다. 가격은 2024년 상품 기록을 연구용으로 고정 환산한 값이며 현재 판매가격이 아닙니다. 상품 상세를 열어 보는 시간도 현재 구간의 확인시간에 포함됩니다.</p>
     </header>
-    <ol className="experiment-phase-step" aria-label="연습 진행 단계">{practiceStages.map((stage,index)=><li key={stage.id} className={index===currentStageIndex?"is-active":index<currentStageIndex?"is-complete":""} aria-current={index===currentStageIndex?"step":undefined}><span>{index+1}</span>{stage.label}</li>)}</ol>
+    <ol className="experiment-phase-step" aria-label="연습 진행 단계">{practiceStages.map((stage,index)=><li key={stage.id} className={index===currentStageIndex?"is-active":index<currentStageIndex?"is-complete":""} aria-current={index===currentStageIndex?"step":undefined}><span>{index+1}</span>{scenario===1&&stage.id==="criteria"?"정보 확인":stage.label}</li>)}</ol>
+    {practiceProfile&&<section className="experiment-task card" aria-label="연습용 선물 받는 사람 정보"><p className="eyebrow">연습용 선물 받는 사람 · 연구자가 정한 정보</p><h2>{practiceProfile.name}</h2><p className="body">{practiceProfile.age}세 · {practiceProfile.occupation} · {practiceProfile.gift_occasion}</p><p className="body">관심사: {practiceProfile.hobbies.join(" · ")}</p><p className="body">{practiceProfile.recent_interest} {practiceProfile.preference} {practiceProfile.dislike}</p><p className="body">고정 예산 {practiceProfile.gift_budget.toLocaleString()}원</p></section>}
     {error&&<p role="alert" className="experiment-error">{error}</p>}
-    {!started?<section className="experiment-task card"><h2>{scenario===0?"선물 주는 사람 요청과 선물 주는 사람 최종 선택":"AI 자동 진행과 AI 최종 선택"}</h2><p className="body">선물 주는 사람의 입력, 상품 후보, 비교, 결정을 시간순으로 확인합니다.</p><button type="button" className="button" onClick={start}>{role==="recipient"?"관찰 시작":"연습 시작"}</button></section>:<>
-      {role==="recipient"&&TIMED_PRACTICE_SEGMENTS.has(currentStage)&&<section className="experiment-clock card" aria-live="polite"><div className="experiment-clock-line"><b>{practiceStages[currentStageIndex]?.label} 확인 시간</b><span>{Math.floor(Math.min(stageExposureMs,EXPERIMENT.minimumPhaseExposureMs)/1000)} / {EXPERIMENT.minimumPhaseExposureMs/1000}초</span></div><div className="experiment-progress"><span style={{width:`${Math.min(100,stageExposureMs/EXPERIMENT.minimumPhaseExposureMs*100)}%`}}/></div><p className="eyebrow">{pageVisible?"현재 화면을 보는 시간이 누적됩니다.":"다른 화면에 있는 동안 시간은 멈춥니다."}</p></section>}
+    {!started?<section className="experiment-task card"><h2>{scenario===0?"선물 주는 사람 요청과 선물 주는 사람 최종 선택":"Agent 자동 진행과 Agent 최종 선택"}</h2><p className="body">{scenario===0?"선물 주는 사람의 입력, 상품 후보, 비교, 결정을 시간순으로 확인합니다.":"Agent가 제공된 인물 정보를 읽고 상품 후보를 제시한 뒤 비교하고 하나를 선택하는 과정을 확인합니다."}</p><button type="button" className="button" onClick={start}>{role==="recipient"?"관찰 시작":"연습 시작"}</button></section>:<>
+      {timedPlayback&&TIMED_PRACTICE_SEGMENTS.has(currentStage)&&<section className="experiment-clock card" aria-live="polite"><div className="experiment-clock-line"><b>{scenario===1&&currentStage==="criteria"?"정보":practiceStages[currentStageIndex]?.label} 확인 시간</b><span>{Math.floor(Math.min(stageExposureMs,EXPERIMENT.minimumPhaseExposureMs)/1000)} / {EXPERIMENT.minimumPhaseExposureMs/1000}초</span></div><div className="experiment-progress"><span style={{width:`${Math.min(100,stageExposureMs/EXPERIMENT.minimumPhaseExposureMs*100)}%`}}/></div><p className="eyebrow">{pageVisible?"현재 화면을 보는 시간이 누적됩니다.":"다른 화면에 있는 동안 시간은 멈춥니다."}</p></section>}
       <section className="experiment-transcript" aria-label="연습용 대화 재생">
-        <h2>선물 주는 사람과 AI의 대화</h2>
+        <h2>{scenario===0?"선물 주는 사람과 Agent의 대화":"Agent의 자동 추천 과정"}</h2>
         {visibleSteps.map((step,index)=><article key={index} ref={index===visibleSteps.length-1?newestStepRef:null} className={"experiment-message "+(step.actor==="agent"?"from-agent":"from-person")}>
-          <p className="experiment-speaker">{step.actor==="agent"?"AI":"선물 주는 사람"} · {step.kind==="dropdown"?"드롭다운 선택":step.segment==="decision"?"최종 결정":step.segment==="comparison"?"후보 비교":"대화"}</p>
+          <p className="experiment-speaker">{step.actor==="agent"?"Agent":"선물 주는 사람"} · {step.kind==="dropdown"?"드롭다운 선택":step.segment==="decision"?"최종 결정":step.segment==="comparison"?"후보 비교":"대화"}</p>
           <div className="experiment-message-bubble"><p className="body">{role==="giver"&&scenario===0&&index===steps.length-1&&practiceSelected?`선물 주는 사람이 선택한 최종 선물: ${practiceProducts[practiceSelected-1].name}`:overrides[index]??step.text}</p></div>
           {step.kind==="dropdown"&&<div className="scripted-dropdown"><label>카테고리<select disabled value="전체"><option>전체</option></select></label><label>중요 기준<select disabled value={role==="giver"?selectedPriority:"실용성"}><option>{role==="giver"?selectedPriority:"실용성"}</option></select></label></div>}
           {step.kind==="candidates"&&<div className="experiment-card-list">{practiceProducts.map((product,i)=><div className="experiment-candidate" key={product.id}>
@@ -197,10 +197,11 @@ export function Training() {
             <tr><th>원본 설명의 사용 상황</th>{practiceProducts.map(p=><td key={p.id}>{p.facts?.use}</td>)}</tr>
             <tr><th>원본 USD 기록</th>{practiceProducts.map(p=><td key={p.id}>${Number(p.price_original).toFixed(2)}</td>)}</tr>
           </tbody></table></div>}
+          {step.kind==="decision"&&scenario===1&&practiceProducts[0]&&<div className="experiment-candidate is-selected"><p className="eyebrow">Agent가 선택한 최종 선물 · 후보 1</p><img className="experiment-product-image" src={practiceProducts[0].image_url} alt={`${practiceProducts[0].name} 원본 상품 이미지`} loading="eager" onError={event=>{if(event.currentTarget.getAttribute("src")!=="/products/category-illustration.svg")event.currentTarget.src="/products/category-illustration.svg";}}/><h3>{practiceProducts[0].name}</h3><strong className="experiment-price">{Number(practiceProducts[0].price_experiment).toLocaleString()}원</strong><p className="body">{practiceProducts[0].facts?.kind} · {practiceProducts[0].facts?.size}</p></div>}
         </article>)}
       </section>
       {role==="giver"&&next?.actor==="giver"&&<section className="experiment-composer experiment-task card"><p className="eyebrow">선물 주는 사람 입력</p>{next.kind==="dropdown"?<><label>상품 카테고리<select className="field" value="전체" disabled><option value="전체">전체</option></select></label><label>가장 중요한 기준<select className="field" value={selectedPriority} onChange={e=>setSelectedPriority(e.target.value)}><option value="실용성">실용성</option><option value="취향 적합성">취향 적합성</option><option value="감성적">감성적</option></select></label><button className="button" onClick={()=>{setOverrides(old=>({...old,[cursor+1]:`선택해서 입력하기 · 카테고리: 전체 · 중요 기준: ${selectedPriority}`}));setCursor(c=>c+1);}}>조건 적용</button></>:next.kind==="decision"?<><p className="body">최종 선물을 직접 선택해 주세요.</p><div className="training-choice">{practiceProducts.map((product,i)=><button className="button secondary" key={product.id} onClick={()=>{setPracticeSelected(i+1);setOverrides(old=>({...old,[cursor+1]:`${i+1}번 후보 ${product.name}로 할게요.`}));setCursor(c=>c+1);}}>{i+1}번 · {product.name}</button>)}</div></>:<><label>대화 입력<input className="field" value={input} onChange={e=>setInput(e.target.value)} placeholder={next.text}/></label><button className="button" disabled={!input.trim()} onClick={send}>전송</button></>}</section>}
-      {cursor===steps.length-1&&<section className="experiment-task card"><h2>방금 본 행동 확인</h2>{replaySegment&&<><p role="alert">해당 행동을 다시 살펴봐 주세요.</p><button className="button secondary" onClick={replay}>해당 구간 다시 보기</button></>}{!replaySegment&&<><p className="body">{questions[0]}</p><div className="training-choice"><label><input type="radio" name="comparison" checked={comparison==="giver"} onChange={()=>setComparison("giver")}/> 선물 주는 사람 요청</label><label><input type="radio" name="comparison" checked={comparison==="agent"} onChange={()=>setComparison("agent")}/> AI 자동 진행</label></div><p className="body">{questions[1]}</p><div className="training-choice"><label><input type="radio" name="decision" checked={decision==="giver"} onChange={()=>setDecision("giver")}/> 선물 주는 사람</label><label><input type="radio" name="decision" checked={decision==="agent"} onChange={()=>setDecision("agent")}/> AI</label></div><button className="button" disabled={!comparison||!decision||busy} onClick={()=>void check()}>{busy?"확인 중…":"답변 확인"}</button></>}</section>}
+      {cursor===steps.length-1&&<section className="experiment-task card"><h2>방금 본 행동 확인</h2>{replaySegment&&<><p role="alert">해당 행동을 다시 살펴봐 주세요.</p><button className="button secondary" onClick={replay}>해당 구간 다시 보기</button></>}{!replaySegment&&<><p className="body">{questions[0]}</p><div className="training-choice"><label><input type="radio" name="comparison" checked={comparison==="giver"} onChange={()=>setComparison("giver")}/> 선물 주는 사람 요청</label><label><input type="radio" name="comparison" checked={comparison==="agent"} onChange={()=>setComparison("agent")}/> Agent 자동 진행</label></div><p className="body">{questions[1]}</p><div className="training-choice"><label><input type="radio" name="decision" checked={decision==="giver"} onChange={()=>setDecision("giver")}/> 선물 주는 사람</label><label><input type="radio" name="decision" checked={decision==="agent"} onChange={()=>setDecision("agent")}/> Agent</label></div><button className="button" disabled={!comparison||!decision||busy} onClick={()=>void check()}>{busy?"확인 중…":"답변 확인"}</button></>}</section>}
     </>}
   </main>;
 }
