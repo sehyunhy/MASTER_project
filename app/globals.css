@@ -290,3 +290,323 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
 @media (prefers-reduced-motion: reduce) {
   .experiment-progress span { transition: none; }
 }
+
+/* The live experiment uses three independently scrollable work areas. Training keeps its own layout. */
+.experiment-shell:not(.training-shell) {
+  width: min(calc(100% - 48px), 1800px);
+  max-width: 1800px;
+  height: 100svh;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px 14px;
+}
+.experiment-shell:not(.training-shell) .experiment-header {
+  flex: 0 0 auto;
+  margin: 0 -24px 12px;
+  padding: 12px 24px 13px;
+}
+.experiment-shell:not(.training-shell) .experiment-trial-counter { margin-top: 7px; }
+.experiment-shell:not(.training-shell) .experiment-header .title { margin: 5px 0 0; }
+.experiment-shell:not(.training-shell) .experiment-roles { margin-top: 8px; }
+.experiment-shell:not(.training-shell) .experiment-phase-step { margin-top: 9px; }
+.experiment-shell:not(.training-shell) .experiment-main-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 230px 350px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  overflow: hidden;
+}
+.experiment-shell:not(.training-shell) .experiment-context,
+.experiment-shell:not(.training-shell) .experiment-workspace,
+.experiment-shell:not(.training-shell) .experiment-results {
+  min-width: 0;
+  min-height: 0;
+}
+.experiment-shell:not(.training-shell) .experiment-context {
+  position: static;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.experiment-shell:not(.training-shell) .experiment-profile { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+.experiment-shell:not(.training-shell) .experiment-transcript {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.experiment-shell:not(.training-shell) .experiment-transcript-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.experiment-shell:not(.training-shell) .experiment-transcript .experiment-section-heading { flex: 0 0 auto; }
+.experiment-shell:not(.training-shell) .experiment-workspace > .experiment-task:not(.experiment-composer) { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-composer {
+  flex: 0 0 auto;
+  max-height: min(37svh, 335px);
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.experiment-shell:not(.training-shell):not(.phase-criteria) .experiment-composer { padding: 12px 16px; }
+.experiment-shell:not(.training-shell):not(.phase-criteria) .experiment-composer h2 { margin: 0 0 7px; font-size: 16px; }
+.experiment-shell:not(.training-shell):not(.phase-criteria) .experiment-composer .experiment-chat-input { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-message,
+.experiment-shell:not(.training-shell) .experiment-message.from-person {
+  max-width: 96%;
+  overflow-wrap: break-word;
+}
+.experiment-shell:not(.training-shell) .experiment-message .body { overflow-wrap: break-word; }
+.experiment-shell:not(.training-shell) .experiment-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid #dce7f4;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 8px 28px #244b8710;
+}
+.experiment-shell:not(.training-shell) .experiment-results h2 { margin: 0; font-size: 19px; }
+.experiment-shell:not(.training-shell) .experiment-results-scroll-hint { display: none; color: #61728a; font-size: 11px; font-weight: 500; }
+.experiment-shell:not(.training-shell) .experiment-results-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.experiment-shell:not(.training-shell) .experiment-results-header .eyebrow { margin: 0 0 3px; }
+.experiment-shell:not(.training-shell) .experiment-results-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e1ebf7;
+}
+.experiment-shell:not(.training-shell) .experiment-results-tabs button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #cfe1fa;
+  border-radius: 9px;
+  color: #315a86;
+  background: #f2f7ff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.experiment-shell:not(.training-shell) .experiment-results-tabs button[aria-selected="true"],
+.experiment-shell:not(.training-shell) .experiment-results-tabs button.is-active {
+  border-color: #176bdb;
+  color: #fff;
+  background: #176bdb;
+}
+.experiment-shell:not(.training-shell) .experiment-results-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.experiment-shell:not(.training-shell) .experiment-results .experiment-card-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  margin: 0;
+}
+.experiment-shell:not(.training-shell) .experiment-results .experiment-candidate {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.experiment-shell:not(.training-shell) .experiment-results .experiment-product-image { height: 136px; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-candidate h3,
+.experiment-shell:not(.training-shell) .experiment-results .experiment-product-summary,
+.experiment-shell:not(.training-shell) .experiment-results .experiment-fit { overflow-wrap: break-word; word-break: normal; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-candidate > .button { margin-top: auto; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-candidate > .button + .button { margin-top: 9px; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table-wrap { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table {
+  width: 100%;
+  min-width: 620px;
+  table-layout: fixed;
+}
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table th,
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table td {
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+  vertical-align: top;
+}
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table tr > :first-child { width: 110px; min-width: 100px; }
+.experiment-shell:not(.training-shell) .experiment-results .experiment-table-label-col { width: 110px; }
+.experiment-shell:not(.training-shell) .experiment-results-empty { display: grid; align-content: center; min-height: 180px; padding: 16px; border: 1px dashed #cfe1fa; border-radius: 12px; background: #f7faff; }
+.experiment-shell:not(.training-shell) .experiment-results-empty h3 { margin: 0 0 5px; font-size: 17px; }
+.experiment-shell:not(.training-shell) .experiment-results-empty .body { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-final-product { max-width: 380px; margin-top: 12px; }
+.experiment-shell:not(.training-shell) .experiment-decision-explanation { max-width: 720px; margin-top: 14px; padding: 12px 14px; border: 1px solid #dce7f4; border-radius: 12px; background: #f6faff; }
+.experiment-shell:not(.training-shell) .experiment-decision-explanation h3 { margin: 0 0 5px; font-size: 14px; }
+.experiment-shell:not(.training-shell) .experiment-decision-explanation p { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.experiment-shell:not(.training-shell) .experiment-profile-criteria { margin-top: 16px; padding-top: 12px; border-top: 1px solid #dce7f4; }
+.experiment-shell:not(.training-shell) .experiment-profile-criteria .eyebrow { margin: 0 0 4px; font-weight: 700; }
+.experiment-shell:not(.training-shell) .experiment-profile-criteria .body { margin: 4px 0; overflow-wrap: break-word; }
+.experiment-shell:not(.training-shell) .experiment-profile-more { display: none; }
+.experiment-shell:not(.training-shell) .experiment-footer {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  max-height: 31svh;
+  margin-top: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.experiment-shell:not(.training-shell) .experiment-footer:empty { display: none; }
+.experiment-shell:not(.training-shell) .experiment-footer > :only-child { grid-column: 1 / -1; }
+.experiment-shell:not(.training-shell) .experiment-footer .experiment-clock {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  box-shadow: 0 5px 22px #2949750b;
+}
+.experiment-shell:not(.training-shell) .experiment-footer .experiment-task { margin: 0; }
+.experiment-shell:not(.training-shell) .experiment-footer-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid #dce7f4;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 5px 22px #2949750b;
+}
+.experiment-shell:not(.training-shell) .experiment-footer-action > div { min-width: 0; }
+.experiment-shell:not(.training-shell) .experiment-footer-action b { font-size: 14px; }
+.experiment-shell:not(.training-shell) .experiment-footer-action p { margin: 4px 0 0; color: #61728a; font-size: 12px; line-height: 1.45; }
+.experiment-shell:not(.training-shell) .experiment-footer-action .button { flex: 0 0 auto; white-space: nowrap; }
+.experiment-shell:not(.training-shell) .experiment-withdraw { margin-left: auto; }
+.experiment-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #172a43a8;
+}
+.experiment-detail-panel {
+  width: min(100%, 720px);
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid #dce7f4;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 16px 55px #10243d55;
+}
+.experiment-detail-panel .experiment-candidate { height: auto; }
+.experiment-detail-panel .experiment-product-image { height: 230px; }
+.experiment-detail-header { display: flex; align-items: start; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid #dce7f4; }
+.experiment-detail-header .eyebrow { margin: 0 0 5px; }
+.experiment-detail-header h2 { margin: 0; font-size: 20px; }
+.experiment-detail-content { max-height: calc(100svh - 135px); overflow: auto; overscroll-behavior: contain; }
+.experiment-detail-content > img { display: block; width: min(100%, 360px); height: 210px; margin: 16px auto; object-fit: contain; border-radius: 12px; background: #f3f7fc; }
+.experiment-detail-content .experiment-facts { display: block; font-size: 14px; line-height: 1.6; }
+.experiment-detail-content .experiment-facts p { margin: 8px 0; overflow-wrap: break-word; }
+
+@media (min-width: 900px) and (max-width: 1279px) {
+  .experiment-shell:not(.training-shell) .experiment-main-grid {
+    grid-template-columns: 330px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .experiment-shell:not(.training-shell) .experiment-context { position: relative; z-index: 9; grid-column: 1 / -1; overflow: visible; }
+  .experiment-shell:not(.training-shell) .experiment-profile {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    align-items: start;
+    gap: 3px 16px;
+    padding: 8px 14px;
+  }
+  .experiment-shell:not(.training-shell) .experiment-profile > .eyebrow { grid-column: 1 / -1; margin: 0; }
+  .experiment-shell:not(.training-shell) .experiment-profile-meta { grid-column: 1; grid-row: 2 / 4; align-items: center; }
+  .experiment-shell:not(.training-shell) .experiment-profile-meta h2 { margin: 0; font-size: 17px; }
+  .experiment-shell:not(.training-shell) .experiment-profile-meta .body { margin: 0; }
+  .experiment-shell:not(.training-shell) .experiment-profile-details { display: none; }
+  .experiment-shell:not(.training-shell) .experiment-profile > .body { grid-column: 2; grid-row: 2; margin: 0; }
+  .experiment-shell:not(.training-shell) .experiment-profile-criteria { grid-column: 3; grid-row: 2 / 4; max-height: 65px; margin: 0; padding: 0; border: 0; overflow: auto; }
+  .experiment-shell:not(.training-shell) .experiment-profile-more { display: block; position: relative; grid-column: 2; grid-row: 3; align-self: end; color: #176bdb; font-size: 12px; }
+  .experiment-shell:not(.training-shell) .experiment-profile-more summary { width: fit-content; cursor: pointer; font-weight: 700; }
+  .experiment-shell:not(.training-shell) .experiment-profile-more-content { position: absolute; top: calc(100% + 7px); left: 0; z-index: 20; width: min(600px, calc(100vw - 100px)); max-height: 45svh; overflow: auto; padding: 12px 16px; border: 1px solid #cfe1fa; border-radius: 12px; background: #fff; box-shadow: 0 12px 28px #244b8726; }
+  .experiment-shell:not(.training-shell) .experiment-profile-more-content .body { margin: 5px 0; }
+  .experiment-shell:not(.training-shell) .experiment-results-scroll-hint { display: inline; }
+  .experiment-shell:not(.training-shell) .experiment-results .experiment-card-list { grid-template-columns: repeat(3, minmax(180px, 1fr)); width: max-content; min-width: 100%; }
+  .experiment-shell:not(.training-shell) .experiment-results-body { overflow: auto; }
+}
+
+@media (max-width: 899px) {
+  .experiment-shell:not(.training-shell) {
+    width: 100%;
+    height: auto;
+    min-height: 100svh;
+    display: block;
+    padding: 0 16px 80px;
+  }
+  .experiment-shell:not(.training-shell) .experiment-header { margin: 0 -16px 14px; padding: 13px 16px 16px; }
+  .experiment-shell:not(.training-shell) .experiment-main-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; overflow: visible; }
+  .experiment-shell:not(.training-shell) .experiment-context,
+  .experiment-shell:not(.training-shell) .experiment-workspace,
+  .experiment-shell:not(.training-shell) .experiment-results { overflow: visible; }
+  .experiment-shell:not(.training-shell) .experiment-transcript { max-height: min(52svh, 540px); min-height: 220px; overflow: hidden; }
+  .experiment-shell:not(.training-shell) .experiment-composer { max-height: none; overflow: visible; }
+  .experiment-shell:not(.training-shell) .experiment-results-body { max-height: min(70svh, 680px); overflow: auto; }
+  .experiment-shell:not(.training-shell) .experiment-results .experiment-card-list { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .experiment-shell:not(.training-shell) .experiment-footer { display: block; max-height: none; overflow: visible; }
+  .experiment-shell:not(.training-shell) .experiment-footer > * + * { margin-top: 10px; }
+}
+
+@media (max-width: 1279px) {
+  .experiment-shell:not(.training-shell) .experiment-footer-action { flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  .experiment-shell:not(.training-shell) { padding: 0 12px 90px; }
+  .experiment-shell:not(.training-shell).has-exposure-clock { padding-top: 100px; }
+  .experiment-shell:not(.training-shell) .experiment-header { margin: 0 -12px 14px; }
+  .experiment-shell:not(.training-shell) .experiment-results .experiment-card-list { grid-template-columns: 1fr; }
+  .experiment-shell:not(.training-shell).role-giver .experiment-workspace { padding-bottom: 0; }
+  .experiment-shell:not(.training-shell).role-giver .experiment-composer { padding-bottom: 14px; }
+  .experiment-shell:not(.training-shell).role-giver .experiment-chat-input { position: static; inset: auto; width: 100%; max-width: none; margin: 13px 0; padding: 0; border: 0; box-shadow: none; }
+  .experiment-shell:not(.training-shell) .experiment-footer .experiment-clock {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    z-index: 8;
+    width: auto;
+    padding: 10px 12px;
+    box-shadow: 0 8px 28px #20302b26;
+  }
+  .experiment-shell:not(.training-shell) .experiment-results .experiment-table { min-width: 620px; }
+}
