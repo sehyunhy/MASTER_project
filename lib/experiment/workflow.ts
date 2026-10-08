@@ -2,7 +2,7 @@ import type { ConditionId } from "@/lib/types";
 
 export type ExperimentPhase = "criteria" | "candidates" | "comparison" | "decision" | "awaiting_survey" | "completed";
 export type TaskActor = "participant" | "agent" | "simulated_giver";
-export const MIN_PHASE_EXPOSURE_MS = 30_000;
+export const MIN_PHASE_EXPOSURE_MS = 20_000;
 export const PHASE_ORDER: readonly ExperimentPhase[] = ["criteria", "candidates", "comparison", "decision", "awaiting_survey", "completed"];
 
 export function conditionRoles(condition: ConditionId) {

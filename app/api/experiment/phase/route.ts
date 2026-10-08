@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { participantSessionMatches } from "@/lib/auth/participant";
 import { logEvent } from "@/lib/events";
-import { generateTrialCandidates } from "@/lib/catalog/generateTrialCandidates";
+import { generateTrialCandidates, restoreRecordedCandidates } from "@/lib/catalog/generateTrialCandidates";
 import { comparisonSummary, buildComparison, storeTranscriptMessage } from "@/lib/experiment/transcript";
 import { EXPERIMENT } from "@/config/experiment";
 import { composeCandidateIntroduction, chooseFinalProductWithClaude } from "@/lib/agent/claude";
+import { loadAgentSessionContext } from "@/lib/agent/sessionContext";
 
 const PHASES = new Set(["criteria","candidates","comparison"]);
 function responseForError(error: any) {
@@ -14,14 +15,14 @@ function responseForError(error: any) {
   const shortage=message.includes("Not enough active catalog products")||message.includes("적합한 실제 상품")||message.includes("APPROVED_STIMULUS_REQUIRED");
   const claudeNotConfigured=message.includes("Claude API 환경변수 ANTHROPIC_API_KEY");
   const status=shortage?409:claudeNotConfigured?503:message.includes("ANOTHER_TAB_ACTIVE")?409:message.includes("MIN_EXPOSURE_NOT_MET")?409:message.includes("ACTOR_NOT_ALLOWED")?403:message.includes("PHASE_MISMATCH")?409:message.includes("CONTENT_NOT_ACTIVE")?409:500;
-  const publicMessage=message.includes("MIN_EXPOSURE_NOT_MET")?"이 단계 내용을 최소 30초 동안 확인한 뒤 진행할 수 있습니다."
+  const publicMessage=message.includes("MIN_EXPOSURE_NOT_MET")?"이 단계 내용을 최소 20초 동안 확인한 뒤 진행할 수 있습니다."
     :message.includes("ANOTHER_TAB_ACTIVE")?"다른 탭에서 연구가 진행 중입니다. 그 탭으로 돌아가 주세요."
     :message.includes("PHASE_MISMATCH")?"현재 연구 단계가 갱신되었습니다. 최신 상태를 불러옵니다."
     :message.includes("ACTOR_NOT_ALLOWED")?"이 단계에서는 해당 작업을 진행할 수 없습니다."
     :message.includes("CANDIDATES_NOT_READY")?"상품 후보를 준비하지 못했습니다. 다시 시도해 주세요."
     :message.includes("CONTENT_NOT_READY")?"화면 내용을 표시한 뒤 다시 시도해 주세요."
     :message.includes("CONTENT_NOT_ACTIVE")?"화면 연결을 확인해 주세요. 화면이 활성 상태일 때 다시 진행할 수 있습니다."
-    :shortage?"이 프로필의 검토된 실제 상품 또는 동결된 관찰 자극이 부족합니다. 연구자가 상품 자료를 보완해야 합니다."
+    :shortage?"상품 정보를 불러오지 못했습니다. 다시 시도해 주세요."
     :claudeNotConfigured?"Claude 연결 설정이 완료되지 않았습니다. 연구자가 Vercel의 ANTHROPIC_API_KEY를 확인해 주세요."
     :"연구 단계를 저장하지 못했습니다.";
   return NextResponse.json({error:publicMessage,code:message.split(" ")[0]},{status});
@@ -65,11 +66,15 @@ export async function POST(request:Request) {
       const {count,error:countError}=await db.from("trial_candidates").select("id",{count:"exact",head:true}).eq("trial_id",trial.id);
       if(countError)throw countError;
       const {data:existingMessage}=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","catalog-candidates-v2").maybeSingle();
+      if(existingMessage){
+        if((count??0)<3)await restoreRecordedCandidates(db,trial.id);
+        return NextResponse.json({ok:true,recovered:(count??0)<3});
+      }
       if((count??0)<3||!existingMessage) {
         await saveEvent(context,"retry","candidates","system",{operation:"generate_missing_catalog_candidates",existingCandidateCount:count??0},undefined,undefined,"candidate-generation-retry:"+trial.id+":"+randomUUID());
         const generated=await generateTrialCandidates(db,trial.id);
         if(!existingMessage){
-          const intro=participant.role==="recipient"?generated.stimulus?.transcript?.candidate_agent:await composeCandidateIntroduction(generated.candidates);
+          const intro=participant.role==="recipient"?generated.stimulus?.transcript?.candidate_agent:await composeCandidateIntroduction(generated.candidates,await loadAgentSessionContext(db,trial.id,generated.candidates));
           await storeTranscriptMessage(db,{trialId:trial.id,phase:"candidates",actorType:"agent",messageType:"product_cards",content:intro??"세 후보를 표시합니다.",payload:{candidates:generated.candidates},idempotencyKey:"catalog-candidates-v2",eventOrigin:participant.role==="recipient"?generated.stimulus?.source_kind:"system",transcriptId:generated.stimulus?.id,stimulusVersion:generated.stimulus?.version});
         }
         const {data:prior}=await db.from("event_logs").select("id").eq("trial_id",trial.id).eq("event_type","agent_task_completed").eq("task_id","compose_candidates").limit(1).maybeSingle();
@@ -171,7 +176,7 @@ export async function POST(request:Request) {
         // The preview uses the same filters and ranking as the persisted candidate generation.
         const prepared=await generateTrialCandidates(db,trial.id,{previewOnly:true});
         if(observing&&prepared.stimulus?.id!==stimulus?.id)throw new Error("APPROVED_STIMULUS_REQUIRED");
-        preparedIntroduction=observing?stimulus.transcript.candidate_agent:await composeCandidateIntroduction(prepared.candidates);
+        preparedIntroduction=observing?stimulus.transcript.candidate_agent:await composeCandidateIntroduction(prepared.candidates,await loadAgentSessionContext(db,trial.id,prepared.candidates));
       }
       const {data:transition,error:transitionError}=await db.rpc("advance_trial_phase",{p_trial_id:trial.id,p_expected_phase:phase,p_actor:actor,p_tab_id:body.tabId});
       if(transitionError)throw transitionError;
@@ -201,6 +206,7 @@ export async function POST(request:Request) {
         if(!observing){await saveEvent(context,"tool_called","candidates","agent",{tool:"present_recommendation"});await saveEvent(context,"tool_result_returned","candidates","agent",{tool:"present_recommendation"});}
         await storeTranscriptMessage(db,{trialId:trial.id,phase:"candidates",actorType:"agent",messageType:"product_cards",content:intro,payload:{candidates:generated.candidates,candidateSetHash:generated.candidateSetHash},idempotencyKey:"catalog-candidates-v2",eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
       } else if(phase==="candidates") {
+        await restoreRecordedCandidates(db,trial.id);
         const eventType=actor==="human_request"?"user_task_requested":actor==="simulated_giver"?"simulated_actor_event":"agent_task_started";
         await saveEvent(context,eventType,phase,actor==="human_request"?"participant":actor==="simulated_giver"?"simulated_giver":"agent",{taskId:"compare_candidates",requestedBy:actor});
         await saveEvent(context,"agent_task_started","candidates","agent",{taskId:"compare_candidates"});
@@ -231,7 +237,7 @@ export async function POST(request:Request) {
         }else{
           await saveEvent(context,"tool_called","decision","agent",{tool:"choose_final_product",candidateCount:picks.length});
           try{
-            const choice=await chooseFinalProductWithClaude(picks);
+            const choice=await chooseFinalProductWithClaude(picks,await loadAgentSessionContext(db,trial.id));
             chosen=picks.find((pick:any)=>pick.product_snapshot?.source_product_id===choice.sourceProductId);
             finalReasonFocus=choice.reasonFocus;
             await saveEvent(context,"tool_result_returned","decision","agent",{tool:"choose_final_product",sourceProductId:choice.sourceProductId,model:choice.model,reasonFocus:choice.reasonFocus});
@@ -257,6 +263,7 @@ export async function POST(request:Request) {
     }
     return NextResponse.json({error:"지원하지 않는 단계 동작입니다."},{status:400});
   } catch(error:any) {
+    console.error("[experiment/phase]",error);
     const result=responseForError(error);
     if(error?.status===401||error?.status===403||error?.status===409)return NextResponse.json({error:error.message},{status:error.status});
     return result;

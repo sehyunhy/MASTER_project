@@ -12,8 +12,8 @@ describe("factorial workflow mapping", () => {
 
   it("rejects under-exposure and never credits hidden or stale intervals", () => {
     assert.equal(phaseRemainingMs(0), MIN_PHASE_EXPOSURE_MS);
-    assert.equal(phaseRemainingMs(29_999), 1);
-    assert.equal(phaseRemainingMs(30_000), 0);
+    assert.equal(phaseRemainingMs(19_999), 1);
+    assert.equal(phaseRemainingMs(20_000), 0);
     assert.equal(exposureDeltaMs(1_000, 4_000, true), 3_000);
     assert.equal(exposureDeltaMs(1_000, 9_000, true), 0);
     assert.equal(exposureDeltaMs(1_000, 4_000, false), 0);

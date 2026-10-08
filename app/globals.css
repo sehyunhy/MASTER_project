@@ -174,7 +174,11 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
 .experiment-quick-criteria .eyebrow { margin: 0 2px 0 0; }
 .experiment-quick-chip { border: 1px solid #c9def9; border-radius: 999px; padding: 7px 12px; color: #185cab; background: #f3f8ff; font-size: 12px; font-weight: 700; cursor: pointer; }
 .experiment-quick-chip:hover:not(:disabled) { background: #e5f1ff; }
+.experiment-quick-chip.is-selected { color: #fff; background: #2366c8; border-color: #2366c8; }
 .experiment-quick-chip:disabled { opacity: .5; cursor: not-allowed; }
+.experiment-criteria-menu { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px 16px; border: 0; padding: 0; margin: 0; }
+.experiment-criteria-menu legend { color: #37516d; font-size: 13px; font-weight: 700; margin-bottom: 7px; }
+.experiment-criteria-menu label { display: inline-flex; align-items: center; gap: 6px; }
 .experiment-chat-input { align-items: stretch; gap: 8px; margin: 13px 0; }
 .experiment-chat-input .field { flex: 1; min-width: 0; min-height: 44px; margin: 0; }
 .experiment-chat-input .button { flex: 0 0 auto; min-width: 66px; box-shadow: none; }

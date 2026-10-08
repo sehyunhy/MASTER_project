@@ -7,7 +7,7 @@ export const EXPERIMENT = {
   sequenceVersion: "williams-v1",
   participantsPerRole: 40,
   recipientPlaybackDurationMs: 90_000,
-  minimumPhaseExposureMs: 30_000,
+  minimumPhaseExposureMs: 20_000,
   heartbeatIntervalMs: 3_000,
   guidedAnalysisDurationMs: 5_000,
   autonomousAnalysisDurationMs: 5_000,
@@ -24,7 +24,7 @@ export const EXPERIMENT = {
     C4: { code: "autonomous_agent", autonomy: "agent_autonomous", authority: "agent" },
   } as const,
   questions: [
-    { id: "priority", text: "이 선물 받는 사람에게 선물을 고를 때 가장 중요한 요소는 무엇이라고 생각합니까?", options: ["취향 적합성", "실용성", "개인적 의미"] },
+    { id: "priority", text: "이 선물 받는 사람에게 선물을 고를 때 가장 중요한 요소는 무엇이라고 생각합니까?", options: ["취향 적합성", "실용성", "감성적"] },
     { id: "context", text: "이 사람에게 선물이 가장 유용할 상황은 무엇이라고 생각합니까?", options: ["일상생활", "취미활동", "새로운 경험"] },
     { id: "trait", text: "당신이라면 어떤 특성을 우선하겠습니까?", options: ["편리함", "의미성", "재미"] },
   ],

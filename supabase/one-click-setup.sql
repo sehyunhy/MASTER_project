@@ -265,10 +265,10 @@ begin
   if v_row.lease_until > v_now and v_row.active_tab_id is distinct from p_tab_id then raise exception 'ANOTHER_TAB_ACTIVE'; end if;
   update public.trial_phase_exposures set
     content_ready_at=coalesce(content_ready_at,v_now), last_heartbeat_at=v_now,
-    threshold_met_at=case when accumulated_ms>=30000 then coalesce(threshold_met_at,v_now) else threshold_met_at end,
+    threshold_met_at=case when accumulated_ms>=20000 then coalesce(threshold_met_at,v_now) else threshold_met_at end,
     active_tab_id=p_tab_id, lease_until=v_now+interval '12 seconds', paused_at=null, updated_at=v_now
   where trial_id=p_trial_id and phase=p_phase;
-  return jsonb_build_object('ready',true,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=30000,'server_now',v_now);
+  return jsonb_build_object('ready',true,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=20000,'server_now',v_now);
 end; $$;
 
 create or replace function public.phase_heartbeat(p_trial_id uuid, p_phase text, p_tab_id text, p_sequence bigint, p_active boolean)
@@ -280,7 +280,7 @@ begin
   select * into v_row from public.trial_phase_exposures where trial_id=p_trial_id and phase=p_phase for update;
   if not found or v_row.content_ready_at is null then raise exception 'CONTENT_NOT_READY'; end if;
   if p_sequence <= v_row.last_sequence then
-    return jsonb_build_object('accepted',false,'reason','stale_sequence','accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=30000);
+    return jsonb_build_object('accepted',false,'reason','stale_sequence','accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=20000);
   end if;
   if v_row.lease_until > v_now and v_row.active_tab_id is distinct from p_tab_id then raise exception 'ANOTHER_TAB_ACTIVE'; end if;
   if v_row.paused_at is null and v_row.last_heartbeat_at is not null then
@@ -290,13 +290,13 @@ begin
   end if;
   update public.trial_phase_exposures set
     accumulated_ms=accumulated_ms+v_delta,
-    threshold_met_at=case when v_row.accumulated_ms+v_delta>=30000 then coalesce(v_row.threshold_met_at,v_now) else v_row.threshold_met_at end,
+    threshold_met_at=case when v_row.accumulated_ms+v_delta>=20000 then coalesce(v_row.threshold_met_at,v_now) else v_row.threshold_met_at end,
     last_heartbeat_at=case when p_active then v_now else null end,
     last_sequence=p_sequence, active_tab_id=p_tab_id,
     lease_until=case when p_active then v_now+interval '12 seconds' else v_now+interval '12 seconds' end,
     paused_at=case when p_active then null else coalesce(paused_at,v_now) end, updated_at=v_now
   where trial_id=p_trial_id and phase=p_phase returning * into v_row;
-  return jsonb_build_object('accepted',true,'delta_ms',v_delta,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=30000,'server_now',v_now);
+  return jsonb_build_object('accepted',true,'delta_ms',v_delta,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=20000,'server_now',v_now);
 end; $$;
 
 drop function if exists public.advance_trial_phase(uuid,text,text);
@@ -310,7 +310,7 @@ begin
   if v_trial.current_phase=v_next then return jsonb_build_object('phase',v_next,'idempotent',true); end if;
   if v_trial.current_phase <> p_expected_phase then raise exception 'PHASE_MISMATCH'; end if;
   select * into v_exposure from public.trial_phase_exposures where trial_id=p_trial_id and phase=p_expected_phase for update;
-  if not found or v_exposure.accumulated_ms < 30000 then raise exception 'MIN_EXPOSURE_NOT_MET'; end if;
+  if not found or v_exposure.accumulated_ms < 20000 then raise exception 'MIN_EXPOSURE_NOT_MET'; end if;
   if p_tab_id is null or v_exposure.active_tab_id is distinct from p_tab_id or v_exposure.lease_until < v_now or v_exposure.last_heartbeat_at is null or v_exposure.last_heartbeat_at < v_now-interval '5 seconds' then raise exception 'CONTENT_NOT_ACTIVE'; end if;
   if p_expected_phase in ('criteria','candidates') then
     if p_actor='human_request' and v_trial.execution_autonomy <> 'human_guided' then raise exception 'ACTOR_NOT_ALLOWED'; end if;
@@ -533,12 +533,12 @@ begin
     if v_delta > 5000 then v_delta := 0; end if;
   end if;
   update public.trial_phase_exposures set accumulated_ms=accumulated_ms+v_delta,
-    threshold_met_at=case when v_row.accumulated_ms+v_delta>=30000 then coalesce(v_row.threshold_met_at,v_now) else v_row.threshold_met_at end,
+    threshold_met_at=case when v_row.accumulated_ms+v_delta>=20000 then coalesce(v_row.threshold_met_at,v_now) else v_row.threshold_met_at end,
     last_heartbeat_at=case when p_active then v_now else null end,
     last_sequence=p_sequence,active_tab_id=p_tab_id,lease_until=v_now+interval '12 seconds',
     paused_at=case when p_active then null else coalesce(paused_at,v_now) end,updated_at=v_now
   where trial_id=p_trial_id and phase=p_phase returning * into v_row;
-  return jsonb_build_object('accepted',true,'delta_ms',v_delta,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=30000);
+  return jsonb_build_object('accepted',true,'delta_ms',v_delta,'accumulated_ms',v_row.accumulated_ms,'complete',v_row.accumulated_ms>=20000);
 end; $$;
 revoke all on function public.phase_heartbeat(uuid,text,text,bigint,boolean) from public, anon, authenticated;
 grant execute on function public.phase_heartbeat(uuid,text,text,bigint,boolean) to service_role;

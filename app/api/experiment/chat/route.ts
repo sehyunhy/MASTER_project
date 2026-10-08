@@ -6,12 +6,16 @@ import { EXPERIMENT } from "@/config/experiment";
 import { interpretMessage, explainWithCatalogTools } from "@/lib/agent/claude";
 import { logEvent } from "@/lib/events";
 import { storeTranscriptMessage } from "@/lib/experiment/transcript";
+import { isOnlyCriteria, mergeCriteria, normalizeCriteria } from "@/lib/experiment/criteria";
+import { restoreRecordedCandidates } from "@/lib/catalog/generateTrialCandidates";
+import { loadAgentSessionContext } from "@/lib/agent/sessionContext";
 
 const inputSchema=z.object({participantId:z.string().uuid(),trialId:z.string().uuid(),
   tabId:z.string().uuid(),
   inputMode:z.enum(["chat","dropdown"]),text:z.string().trim().max(1200).default(""),
   selectedCategory:z.string().nullable().optional(),preferenceTags:z.array(z.string()).max(5).optional(),
-  selectedPriority:z.enum(["취향 적합성","실용성","개인적 의미"]).nullable().optional(),
+  selectedPriority:z.enum(["취향 적합성","실용성","감성적","개인적 의미"]).nullable().optional(),
+  selectedPriorities:z.array(z.enum(["취향 적합성","실용성","감성적","개인적 의미"])).max(3).optional(),
   requestIntent:z.enum(["criteria_update","search_request","compare_request"]).optional(),
   idempotencyKey:z.string().uuid()});
 
@@ -37,24 +41,38 @@ export async function POST(request:Request){
         .eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
       if(!exposure?.content_ready_at||exposure.active_tab_id!==input.tabId||!exposure.lease_until||new Date(exposure.lease_until).getTime()<Date.now())return NextResponse.json({error:"현재 활성 화면에서 내용을 확인한 뒤 입력해 주세요."},{status:409});
     }
-    const {data:profile}=await db.from("recipient_profiles").select("profile_code,gift_budget,recent_interest,preference").eq("id",trial.profile_id).single();
+    if(input.inputMode==="chat"&&!input.text)return NextResponse.json({error:"메시지를 입력해 주세요."},{status:400});
+    const {data:profile}=await db.from("recipient_profiles").select("*").eq("id",trial.profile_id).single();
     if(!profile)throw new Error("선물 받는 사람 프로필을 찾지 못했습니다.");
     const {data:catalog,error:catalogError}=await db.from("product_catalog")
       .select("category,search_tags_ko").eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot")
       .eq("experiment_eligible",true).eq("is_active",true).contains("profile_codes",[profile.profile_code]).lte("price_experiment",profile.gift_budget);
     if(catalogError)throw catalogError;
+    if(!catalog?.length)throw new Error(`CATALOG_SOURCE_EMPTY trial=${trial.id} profile=${profile.profile_code} dataset=${EXPERIMENT.candidateVersion}`);
     const allowedCategories=[...new Set((catalog??[]).map((x:any)=>x.category))] as string[];
     const allowedTags=[...new Set((catalog??[]).flatMap((x:any)=>x.search_tags_ko??[]))] as string[];
     const {data:state}=await db.from("trial_search_states").select("*").eq("trial_id",trial.id).maybeSingle();
     const current=state??{trial_id:trial.id,scenario_id:trial.scenario_id,recipient_context:profile.recent_interest??"",allowed_categories:allowedCategories,selected_category:null,preference_tags:[],use_context:null,selection_priorities:[],excluded_features:[],budget_limit:profile.gift_budget,currency:"KRW",query_text:"",state_version:0};
-    if(input.inputMode==="chat"&&!input.text)return NextResponse.json({error:"메시지를 입력해 주세요."},{status:400});
-    const intent=input.inputMode==="chat"
-      ?await interpretMessage({text:input.text,phase,condition:trial.execution_autonomy,allowedCategories,allowedTags})
+    // One transport request owns this UUID. A later intentional repeat uses a new UUID.
+    const {data:claim,error:claimError}=await db.from("trial_messages").upsert({
+      trial_id:trial.id,phase,actor_type:"participant",message_type:"text",
+      content:input.inputMode==="chat"?input.text:"선택 메뉴 입력 처리 중",
+      payload:{processing:true},idempotency_key:"chat-input:"+input.idempotencyKey,event_origin:"participant",
+    },{onConflict:"trial_id,idempotency_key",ignoreDuplicates:true}).select("id");
+    if(claimError)throw claimError;
+    if(!claim?.length)return NextResponse.json({error:"앞선 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요."},{status:409,headers:{"Retry-After":"1"}});
+    let intent=input.inputMode==="chat"
+      ?isOnlyCriteria(input.text)?{intent:"criteria_update" as const,selected_category:null,preference_tags:[],selection_priority:null,final_ordinal:null,clarification:null}
+        :await interpretMessage({text:input.text,phase,condition:trial.execution_autonomy,allowedCategories,allowedTags,sessionContext:await loadAgentSessionContext(db,trial.id)})
       :{intent:input.requestIntent??"criteria_update",selected_category:input.selectedCategory??null,preference_tags:input.preferenceTags??[],selection_priority:input.selectedPriority??null,final_ordinal:null,clarification:null};
+    if(phase==="criteria"&&input.inputMode==="chat"&&intent.intent==="clarify"&&!/(후보|찾아|추천해|비교|최종|선택해|결정해)/.test(input.text))
+      intent={...intent,intent:"criteria_update",clarification:null};
+    const requestedPriorities=normalizeCriteria(input.selectedPriorities??(input.selectedPriority?[input.selectedPriority]:current.selection_priorities??[]));
+    const allPriorities=mergeCriteria(requestedPriorities,input.text,intent.selection_priority);
     const mode=input.inputMode;
-    await logEvent({participantId:person.id,trialId:trial.id,eventType:mode==="chat"?"chat_message_submitted":"dropdown_changed",phase,actorType:"participant",eventOrigin:"participant",inputMode:mode,intent:intent.intent,payload:{text:input.text,selectedCategory:intent.selected_category,preferenceTags:intent.preference_tags,selectedPriority:intent.selection_priority},idempotencyKey:"chat-input:"+input.idempotencyKey});
+    await logEvent({participantId:person.id,trialId:trial.id,eventType:mode==="chat"?"chat_message_submitted":"dropdown_changed",phase,actorType:"participant",eventOrigin:"participant",inputMode:mode,intent:intent.intent,payload:{text:input.text,selectedCategory:intent.selected_category,preferenceTags:intent.preference_tags,selectedPriorities:allPriorities},idempotencyKey:"chat-input:"+input.idempotencyKey});
     if(mode==="chat")await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:input.text,payload:{inputMode:mode,intent:intent.intent},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
-    else await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:`선택해서 입력하기 · 중요 기준: ${intent.selection_priority??"선택 없음"} · 카테고리: ${intent.selected_category??"전체"} · 특성: ${intent.preference_tags.join(" · ")||"선택 없음"}`,payload:{inputMode:mode,intent:intent.intent},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
+    else await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"participant",messageType:"text",content:`선택해서 입력하기 · 추천 기준: ${allPriorities.join(" · ")||"선택 없음"} · 카테고리: ${intent.selected_category??"전체"} · 특성: ${intent.preference_tags.join(" · ")||"선택 없음"}`,payload:{inputMode:mode,intent:intent.intent,selectedPriorities:allPriorities},idempotencyKey:"chat-input:"+input.idempotencyKey,eventOrigin:"participant"});
     let response="";let advanceRequested=false;let finalCandidateId:string|null=null;
     const taskIntent=["search_request","compare_request","final_choice"].includes(intent.intent);
     if(intent.intent==="clarify"){
@@ -76,10 +94,10 @@ export async function POST(request:Request){
       }
     } else {
       const nextState=phase==="criteria"?{...current,allowed_categories:allowedCategories,
-        selected_category:mode==="dropdown"?intent.selected_category:intent.selected_category??current.selected_category,
-        preference_tags:mode==="dropdown"?intent.preference_tags:[...new Set([...(current.preference_tags??[]),...intent.preference_tags])],
-        selection_priorities:mode==="dropdown"?(intent.selection_priority?[intent.selection_priority]:[]):intent.selection_priority?[intent.selection_priority]:(current.selection_priorities??[]),
-        query_text:mode==="chat"?input.text:current.query_text,
+        selected_category:mode==="dropdown"?intent.selected_category:input.selectedCategory??intent.selected_category??current.selected_category,
+        preference_tags:mode==="dropdown"?intent.preference_tags:[...new Set([...(current.preference_tags??[]),...(input.preferenceTags??[]),...intent.preference_tags])],
+        selection_priorities:allPriorities,
+        query_text:mode==="chat"&&input.text&&!String(current.query_text??"").split("\n").includes(input.text)?[current.query_text,input.text].filter(Boolean).join("\n"):current.query_text,
         state_version:Number(current.state_version)+1,updated_at:new Date().toISOString()}:current;
       if(nextState.selected_category&&!allowedCategories.includes(nextState.selected_category))return NextResponse.json({error:"이 프로필에서 허용되지 않은 카테고리입니다."},{status:400});
       if(nextState.preference_tags.some((tag:string)=>!allowedTags.includes(tag)))return NextResponse.json({error:"허용되지 않은 상품 특성입니다."},{status:400});
@@ -92,12 +110,22 @@ export async function POST(request:Request){
       }
       if(intent.intent==="search_request"||intent.intent==="compare_request"){
         const {data:exposure}=await db.from("trial_phase_exposures").select("accumulated_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
-        if(Number(exposure?.accumulated_ms??0)<EXPERIMENT.minimumPhaseExposureMs)response="현재 내용을 최소 30초 동안 확인한 뒤 다음 과업을 요청할 수 있습니다.";
+        if(Number(exposure?.accumulated_ms??0)<EXPERIMENT.minimumPhaseExposureMs)response="현재 내용을 최소 20초 동안 확인한 뒤 다음 과업을 요청할 수 있습니다.";
         else{response=intent.intent==="search_request"?"후보 구성을 요청했습니다.":"후보 비교를 요청했습니다.";advanceRequested=true;}
+      }else if(phase==="criteria"&&intent.intent==="criteria_update"){
+        const criterionText=allPriorities.length===1&&allPriorities[0]!=="감성적"?`${allPriorities[0]}을`:allPriorities.length?`${allPriorities.join("·")} 기준을`:"입력한 조건을";
+        response=`${profile.name}님의 관심사와 ${Number(profile.gift_budget).toLocaleString()}원 예산을 바탕으로 ${criterionText} 추천 기준에 반영했습니다.`;
       }else{
-        const {data:links}=await db.from("trial_candidates").select("product_snapshot").eq("trial_id",trial.id).order("display_order");
+        let {data:links,error:linksError}=await db.from("trial_candidates").select("display_order,product_snapshot").eq("trial_id",trial.id).order("display_order");
+        if(linksError)throw linksError;
+        if(["candidates","comparison","decision"].includes(phase)&&(links??[]).length!==3){
+          const restored=await restoreRecordedCandidates(db,trial.id);
+          if(restored)links=restored;
+        }
+        if(["candidates","comparison","decision"].includes(phase)&&(links??[]).length!==3)throw new Error(`CANDIDATE_STATE_MISSING trial=${trial.id} phase=${phase}`);
         const ids=(links??[]).map((x:any)=>x.product_snapshot?.source_product_id).filter(Boolean);
-        const answer=await explainWithCatalogTools({db,trialId:trial.id,profileCode:profile.profile_code,budget:profile.gift_budget,question:input.text||"적용된 조건을 확인해 주세요.",state:nextState,candidateIds:ids});
+        const sessionContext=await loadAgentSessionContext(db,trial.id,links??[]);
+        const answer=await explainWithCatalogTools({db,trialId:trial.id,profileCode:profile.profile_code,budget:profile.gift_budget,question:input.text||"적용된 조건을 확인해 주세요.",state:nextState,candidateIds:ids,sessionContext});
         response=answer.text;
         for(const tool of answer.toolCalls){
           await logEvent({participantId:person.id,trialId:trial.id,eventType:"tool_called",phase,actorType:"agent",inputMode:mode,intent:intent.intent,payload:{tool,model:answer.model}});
@@ -107,5 +135,5 @@ export async function POST(request:Request){
     }
     await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:"agent",messageType:"text",content:response,payload:{inputMode:mode,intent:intent.intent,advanceRequested,finalCandidateId},idempotencyKey:"chat-reply:"+input.idempotencyKey,eventOrigin:"system"});
     return NextResponse.json({ok:true,response,advanceRequested,finalCandidateId,intent:intent.intent,stateVersion:phase==="criteria"?Number(current.state_version)+1:Number(current.state_version)});
-  }catch(e){return NextResponse.json({error:(e as Error).message},{status:500});}
+  }catch(e){console.error("[experiment/chat]",e);return NextResponse.json({error:"상품 정보를 불러오지 못했습니다. 다시 시도해 주세요."},{status:500});}
 }

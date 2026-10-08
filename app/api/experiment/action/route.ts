@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       const {data:person}=await db.from("participants").select("role").eq("id",v.data.participantId).single();
       if(person?.role!=="giver")return NextResponse.json({error:"관찰 모드에서는 실제 선택을 입력할 수 없습니다."},{status:403});
       const retryingSameFinalChoice=trial.status==="awaiting_survey"&&trial.current_phase==="awaiting_survey";
-      if(!retryingSameFinalChoice&&(trial.status!=="active"||trial.current_phase!=="decision"))return NextResponse.json({error:"비교 내용을 최소 30초 확인한 뒤 최종 선택해 주세요."},{status:409});
+      if(!retryingSameFinalChoice&&(trial.status!=="active"||trial.current_phase!=="decision"))return NextResponse.json({error:"비교 내용을 최소 20초 확인한 뒤 최종 선택해 주세요."},{status:409});
       const { data: link,error:linkError } = await db.from("trial_candidates").select("gift_candidate_id,product_snapshot").eq("trial_id", v.data.trialId).eq("gift_candidate_id", v.data.candidateId).maybeSingle();
       if(linkError)throw linkError;
       if (!link) return NextResponse.json({ error: "후보를 찾을 수 없습니다." }, { status: 400 });

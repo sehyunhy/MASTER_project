@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import { EXPERIMENT } from "@/config/experiment";
 import { recommendCatalogItems } from "@/lib/catalog/recommend";
 
+function stableValue(value:any):any {
+  if(Array.isArray(value))return value.map(stableValue);
+  if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stableValue(value[key])]));
+  return value;
+}
+function sameSnapshot(left:any,right:any){return JSON.stringify(stableValue(left))===JSON.stringify(stableValue(right));}
+
 function snapshot(item:any) {
   return {
     id:item.id,source_product_id:item.source_product_id,sku:item.sku,
@@ -17,6 +24,43 @@ function snapshot(item:any) {
     fit_reason:(item.use_cases??[])[0]??"원본 정보에 기반한 후보입니다.",
     source_type:item.source_type,is_mock:false,
   };
+}
+
+/** Restore links only from the candidate set already recorded for this trial. */
+export async function restoreRecordedCandidates(db:any,trialId:string) {
+  const {data:message,error:messageError}=await db.from("trial_messages").select("payload")
+    .eq("trial_id",trialId).eq("idempotency_key","catalog-candidates-v2").maybeSingle();
+  if(messageError)throw messageError;
+  const recorded=message?.payload?.candidates;
+  if(!Array.isArray(recorded)||recorded.length!==3)return null;
+  const ids=recorded.map((item:any)=>item.gift_candidate_id);
+  const productIds=recorded.map((item:any)=>item.product_snapshot?.id);
+  if(new Set(ids).size!==3||new Set(productIds).size!==3||ids.some((id:any)=>!id)||productIds.some((id:any)=>!id))throw new Error("RECORDED_CANDIDATES_INVALID");
+  const [{data:products,error:productError},{data:gifts,error:giftError},{data:existing,error:existingError},{data:trial,error:trialError}]=await Promise.all([
+    db.from("product_catalog").select("id,source_product_id,product_name_original,price_experiment").in("id",productIds).eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot"),
+    db.from("gift_candidates").select("id,product_catalog_id").in("id",ids),
+    db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trialId),
+    db.from("trials").select("participant_id").eq("id",trialId).single(),
+  ]);
+  if(productError||giftError||existingError||trialError)throw productError??giftError??existingError??trialError;
+  const {data:participant,error:participantError}=await db.from("participants").select("role").eq("id",trial.participant_id).single();
+  if(participantError||!participant)throw participantError??new Error("PARTICIPANT_MISSING");
+  for(let index=0;index<3;index++){
+    const item=recorded[index],p=item.product_snapshot;
+    const actual=(products??[]).find((row:any)=>row.id===p.id);
+    const gift=(gifts??[]).find((row:any)=>row.id===item.gift_candidate_id);
+    if(!actual||!gift||gift.product_catalog_id!==p.id||actual.source_product_id!==p.source_product_id||actual.product_name_original!==p.product_name_original||Number(actual.price_experiment)!==Number(p.price)||item.display_order!==index+1)throw new Error("RECORDED_CANDIDATES_MISMATCH");
+  }
+  for(const link of existing??[]){
+    const item=recorded.find((value:any)=>value.gift_candidate_id===link.gift_candidate_id);
+    if(!item||item.display_order!==link.display_order||!sameSnapshot(item.product_snapshot,link.product_snapshot))throw new Error("RECORDED_CANDIDATES_MISMATCH");
+  }
+  for(const item of recorded){
+    if((existing??[]).some((link:any)=>link.gift_candidate_id===item.gift_candidate_id))continue;
+    const {error}=await db.from("trial_candidates").insert({trial_id:trialId,gift_candidate_id:item.gift_candidate_id,display_order:item.display_order,product_snapshot:item.product_snapshot,is_mock:false,is_simulated:participant.role==="recipient"});
+    if(error)throw error;
+  }
+  return recorded;
 }
 
 export async function generateTrialCandidates(db:any,trialId:string,options:{previewOnly?:boolean}={}) {
@@ -60,7 +104,7 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
     const tags:string[]=state?.preference_tags??[];
     const filtered=(catalog??[]).filter((item:any)=>(!state?.selected_category||item.category===state.selected_category)
       &&(!tags.length||tags.some(tag=>(item.search_tags_ko??[]).includes(tag))));
-    picked=recommendCatalogItems(filtered,profile.profile_code,{priority:state?.selection_priorities?.[0]},Number(profile.gift_budget));
+    picked=recommendCatalogItems(filtered,profile.profile_code,{priorities:state?.selection_priorities??[]},Number(profile.gift_budget));
   }
   if(picked.length!==3)throw new Error(`프로필 ${profile.profile_code}의 적합한 실제 상품이 3개 미만입니다. 추가 자료가 필요합니다.`);
   const snapshots=stimulus?.candidate_snapshots??picked.map(snapshot);
@@ -69,8 +113,8 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
   const {data:existing,error:existingError}=await db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trialId).order("display_order");
   if(existingError)throw existingError;
   if(existing?.length){
-    if(existing.length!==3||JSON.stringify(existing.map((x:any)=>x.product_snapshot))!==JSON.stringify(snapshots))throw new Error("이미 저장된 후보 집합이 현재 자극과 다릅니다.");
-    return {candidates:existing.map((x:any)=>({gift_candidate_id:x.gift_candidate_id,display_order:x.display_order,product_snapshot:x.product_snapshot})),candidateSetId,candidateSetHash,stimulus};
+    if(existing.some((item:any)=>item.display_order<1||item.display_order>3||!sameSnapshot(item.product_snapshot,snapshots[item.display_order-1])))throw new Error("이미 저장된 후보 집합이 현재 자극과 다릅니다.");
+    if(existing.length===3)return {candidates:existing.map((x:any)=>({gift_candidate_id:x.gift_candidate_id,display_order:x.display_order,product_snapshot:x.product_snapshot})),candidateSetId,candidateSetHash,stimulus};
   }
   // Check the exact candidate set before advancing the trial without writing a trial candidate.
   if(options.previewOnly)return {
@@ -82,8 +126,8 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
     const item=picked[index], productSnapshot=snapshots[index];
     const {data:candidate,error:candidateError}=await db.from("gift_candidates").upsert({
       profile_id:profile.id,candidate_set_id:candidateSetId,product_catalog_id:item.id,
-      product_name:productSnapshot.product_name,category:item.category,price:item.price,
-      description:item.description,fit_reason:productSnapshot.fit_reason,
+      product_name:productSnapshot.product_name,category:item.category,price:productSnapshot.price,
+      description:productSnapshot.description,fit_reason:productSnapshot.fit_reason,
       preference_score:null,practicality_score:null,budget_score:null,overall_score:null,
       image_url:item.image_url,product_snapshot:productSnapshot,version:EXPERIMENT.candidateVersion,is_mock:false,
     },{onConflict:"profile_id,candidate_set_id,product_name"}).select("id").single();

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EXPERIMENT } from "@/config/experiment";
+import { normalizeCriteria, participantCriterionText, RECOMMENDATION_CRITERIA, toggleCriterion } from "@/lib/experiment/criteria";
 
 type Role = "giver" | "recipient";
 type Phase = "criteria" | "candidates" | "comparison" | "decision" | "awaiting_survey" | "completed";
@@ -24,7 +25,7 @@ function productFor(candidate: Row) {
 }
 function labelFor(order: number) { return String.fromCharCode(64 + order); }
 function participantFacingText(value:string){
-  return value.replace(/(증여자|수혜자)(은|는|이|가|을|를|의|에게|와|과)/g,(_match,role:string,particle:string)=>{
+  return participantCriterionText(value).replace(/(증여자|수혜자)(은|는|이|가|을|를|의|에게|와|과)/g,(_match,role:string,particle:string)=>{
     const name=role==="증여자"?"선물 주는 사람":"선물 받는 사람";
     const replaced:Record<string,string>={은:"은",는:"은",이:"이",가:"이",을:"을",를:"을",의:"의",에게:"에게",와:"과",과:"과"};
     return name+replaced[particle];
@@ -92,7 +93,7 @@ export function Experiment({ role }: { role: Role }) {
   const [chatText,setChatText]=useState("");
   const [dropdownOpen,setDropdownOpen]=useState(false);
   const [selectedCategory,setSelectedCategory]=useState("");
-  const [selectedPriority,setSelectedPriority]=useState("");
+  const [selectedPriorities,setSelectedPriorities]=useState<string[]>([]);
   const [selectedTags,setSelectedTags]=useState<string[]>([]);
   const [recipientStarted,setRecipientStarted]=useState(false);
   const [recipientCursor,setRecipientCursor]=useState(0);
@@ -111,6 +112,7 @@ export function Experiment({ role }: { role: Role }) {
   const tabChannel = useRef<BroadcastChannel|null>(null);
   const newestMessageRef = useRef<HTMLElement|null>(null);
   const lastMessageCount = useRef({trialId:"",count:0});
+  const sendingChat = useRef(false);
 
   useEffect(() => {
     const id = sessionStorage.getItem("participantId") ?? "";
@@ -164,7 +166,7 @@ export function Experiment({ role }: { role: Role }) {
       requestAnimationFrame(()=>newestMessageRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
   },[trial?.id,shownMessages.length,visible]);
-  useEffect(()=>{setSelectedCategory(searchState?.selected_category??"");setSelectedPriority(searchState?.selection_priorities?.[0]??"");setSelectedTags(searchState?.preference_tags??[]);},[trial?.id,searchState?.state_version]);
+  useEffect(()=>{setSelectedCategory(searchState?.selected_category??"");setSelectedPriorities(normalizeCriteria(searchState?.selection_priorities??[]));setSelectedTags(searchState?.preference_tags??[]);},[trial?.id,searchState?.state_version]);
 
   useEffect(()=>{
     if(!trial||role!=="recipient")return;
@@ -385,10 +387,11 @@ export function Experiment({ role }: { role: Role }) {
   }
 
   async function sendChat(inputMode:"chat"|"dropdown",requestIntent:"criteria_update"|"search_request"|"compare_request"="criteria_update"){
-    if(role!=="giver"||!trial)return;
+    if(role!=="giver"||!trial||sendingChat.current)return;
+    sendingChat.current=true;
     setBusy(true);setError("");
     try{
-      const response=await fetch("/api/experiment/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({participantId,trialId:trial.id,tabId,inputMode,text:inputMode==="chat"?chatText:"",selectedCategory:selectedCategory||null,selectedPriority:selectedPriority||null,preferenceTags:selectedTags,requestIntent,idempotencyKey:crypto.randomUUID()})});
+      const response=await fetch("/api/experiment/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({participantId,trialId:trial.id,tabId,inputMode,text:inputMode==="chat"?chatText:"",selectedCategory:selectedCategory||null,selectedPriorities,preferenceTags:selectedTags,requestIntent,idempotencyKey:crypto.randomUUID()})});
       const result=await response.json();if(!response.ok)throw new Error(result.error??"대화를 저장하지 못했습니다.");
       if(inputMode==="chat")setChatText("");
       await load();
@@ -397,7 +400,11 @@ export function Experiment({ role }: { role: Role }) {
         const resultPick=await pick.json();if(!pick.ok)throw new Error(resultPick.error??"선택을 저장하지 못했습니다.");
         await load();
       }else if(result.advanceRequested){await phaseAction("advance",{requested:true});await load();}
-    }catch(e){setError((e as Error).message);await load().catch(()=>{});}finally{setBusy(false);}
+    }catch(e){setError((e as Error).message);await load().catch(()=>{});}finally{sendingChat.current=false;setBusy(false);}
+  }
+
+  function togglePriority(priority:string){
+    setSelectedPriorities(current=>toggleCriterion(current,priority));
   }
 
   function startObservation(){
@@ -504,7 +511,7 @@ export function Experiment({ role }: { role: Role }) {
           <div className="experiment-message-bubble">
           <p className="experiment-speaker">{speaker}{message.simulated_actor_event&&<span> · 시나리오 재생</span>}</p>
           {message.content && <p className="body">{participantFacingText(message.content)}</p>}
-          {role==="recipient"&&message.payload?.inputMode==="dropdown"&&<div className="scripted-dropdown" aria-label="선물 주는 사람이 선택한 드롭다운 기준"><label>선물 주는 사람이 선택한 상품 카테고리<select disabled value={message.payload.selectedCategory??""}><option>{message.payload.selectedCategory??""}</option></select></label><label>선물 주는 사람이 선택한 중요 기준<select disabled value={message.payload.selectedPriority??""}><option>{message.payload.selectedPriority??""}</option></select></label></div>}
+          {role==="recipient"&&message.payload?.inputMode==="dropdown"&&<div className="scripted-dropdown" aria-label="선물 주는 사람이 선택한 드롭다운 기준"><label>선물 주는 사람이 선택한 상품 카테고리<select disabled value={message.payload.selectedCategory??""}><option>{message.payload.selectedCategory??""}</option></select></label><label>선물 주는 사람이 선택한 중요 기준<select disabled value={participantCriterionText(message.payload.selectedPriority??"")}><option>{participantCriterionText(message.payload.selectedPriority??"")}</option></select></label></div>}
           </div>
           {message.message_type==="product_cards" && <div className="experiment-card-list">{candidates.map((candidate:Row)=><div key={candidate.id}><CandidateCard candidate={candidate} details={detailsOpen[candidate.gift_candidate_id]??false} onToggle={()=>void toggleCandidate(candidate)}/></div>)}</div>}
           {message.message_type==="comparison" && <div data-exposure-phase="comparison"><ComparisonTable rows={message.payload?.rows ?? []}/></div>}
@@ -539,7 +546,14 @@ export function Experiment({ role }: { role: Role }) {
     {phase==="awaiting_survey" && (role!=="recipient"||recipientCursor>=messages.length) && <section className="experiment-task card"><p className="eyebrow">종이 설문</p><h2>{humanDecision?"선물 주는 사람이 선택한 최종 선물":"AI가 선택한 최종 선물"}</h2><p className="body">{productFor(candidates.find((candidate:Row)=>candidate.gift_candidate_id===trial.final_selections?.[0]?.selected_candidate_id))?.product_name??"최종 선물 정보 확인 중"}</p><p className="body">연구자에게 받은 종이 설문에 응답해 주세요. 심리척도와 주관적 평가는 웹에서 입력하지 않습니다.</p><button className="button" disabled={busy} onClick={()=>void confirmPaperSurvey()}>{busy?"저장 중…":"종이 설문 작성 완료"}</button></section>}
     {role==="recipient"&&<button className="button secondary" disabled={busy} onClick={()=>void withdraw()}>연구 중단</button>}
     {phase==="completed" && <section className="experiment-task card"><h2>참여가 완료되었습니다</h2><a href="/complete" className="button">완료</a></section>}
-    {role==="giver"&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task experiment-composer card" aria-label="선물 주는 사람 대화 입력"><h2>{phase==="criteria"?"선물 기준 알려주기":"AI에게 질문하기"}</h2><p className="body">{phase==="criteria"?"아래에 원하는 기준을 적고 전송하거나, 선택 메뉴에서 중요 기준을 고르세요. 전송하면 AI가 응답합니다. 후보 요청은 기준을 저장하고 30초가 지난 뒤에 가능합니다.":"표시된 상품 정보에 관해 AI에게 질문할 수 있습니다."}</p>{phase==="criteria"&&<div className="experiment-quick-criteria" aria-label="기준 입력 예시"><span className="eyebrow">입력 예시</span>{["취향 적합성","실용성","개인적 의미"].map(example=><button type="button" key={example} className="experiment-quick-chip" onClick={()=>setChatText(example)} disabled={busy||!visible}>{example}</button>)}</div>}<div className="experiment-chat-input"><input className="field" value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatText.trim()&&(ready||phase==="decision"))void sendChat("chat");}} placeholder="선물 기준이나 상품에 대해 입력해 주세요" disabled={busy||!visible||(phase!=="decision"&&!ready)}/><button className="button" disabled={!chatText.trim()||busy||!visible||(phase!=="decision"&&!ready)} onClick={()=>void sendChat("chat")}>{busy?"처리 중…":"전송"}</button></div>{phase==="criteria"&&<><button type="button" className="button secondary" onClick={()=>setDropdownOpen(open=>!open)}>{dropdownOpen?"선택 메뉴 접기":"선택해서 입력하기"}</button>{dropdownOpen&&<div className="experiment-dropdown"><label>가장 중요한 기준<select className="field" value={selectedPriority} onChange={e=>setSelectedPriority(e.target.value)}><option value="">선택 없음</option><option value="취향 적합성">취향 적합성</option><option value="실용성">실용성</option><option value="개인적 의미">개인적 의미</option></select></label><label>상품 카테고리<select className="field" value={selectedCategory} onChange={e=>setSelectedCategory(e.target.value)}><option value="">전체</option>{catalogOptions.categories.map((category:string)=><option key={category} value={category}>{category}</option>)}</select></label><label>선호 특성<select className="field" value={selectedTags[0]??""} onChange={e=>setSelectedTags(e.target.value?[e.target.value]:[])}><option value="">선택 없음</option>{catalogOptions.tags.map((tag:string)=><option key={tag} value={tag}>{tag}</option>)}</select></label><p className="eyebrow">고정 예산 {Number(profile.gift_budget??0).toLocaleString()}원 · 변경할 수 없습니다.</p><button className="button" disabled={busy||!visible||!ready} onClick={()=>void sendChat("dropdown")}>선택한 기준 적용</button></div>}</>}<p className="eyebrow">저장된 기준 · {(searchState?.selection_priorities??[]).join(" · ")||"중요 기준 없음"} · {searchState?.selected_category??"카테고리 전체"} · {(searchState?.preference_tags??[]).join(" · ")||"특성 선택 없음"}</p></section>}
+    {role==="giver"&&["criteria","candidates","comparison","decision"].includes(phase)&&<section className="experiment-task experiment-composer card" aria-label="선물 주는 사람 대화 입력">
+      <h2>{phase==="criteria"?"선물 기준 알려주기":"AI에게 질문하기"}</h2>
+      <p className="body">{phase==="criteria"?"원하는 기준을 여러 개 고르거나 직접 적어 전송해 주세요. 후보 요청은 기준을 저장하고 20초가 지난 뒤 가능합니다.":"표시된 상품 정보에 관해 AI에게 질문할 수 있습니다."}</p>
+      {phase==="criteria"&&<div className="experiment-quick-criteria" aria-label="추천 기준 선택"><span className="eyebrow">추천 기준</span>{RECOMMENDATION_CRITERIA.map(priority=><button type="button" key={priority} className={"experiment-quick-chip"+(selectedPriorities.includes(priority)?" is-selected":"")} aria-pressed={selectedPriorities.includes(priority)} onClick={()=>togglePriority(priority)} disabled={busy||!visible}>{priority}</button>)}</div>}
+      <div className="experiment-chat-input"><input className="field" value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&(chatText.trim()||phase==="criteria"&&selectedPriorities.length)&&(ready||phase==="decision"))void sendChat(chatText.trim()?"chat":"dropdown");}} placeholder="예: 실용성, 취향 적합성" disabled={busy||!visible||(phase!=="decision"&&!ready)}/><button className="button" disabled={!(chatText.trim()||phase==="criteria"&&selectedPriorities.length)||busy||!visible||(phase!=="decision"&&!ready)} onClick={()=>void sendChat(chatText.trim()?"chat":"dropdown")}>{busy?"처리 중…":"전송"}</button></div>
+      {phase==="criteria"&&<><button type="button" className="button secondary" onClick={()=>setDropdownOpen(open=>!open)}>{dropdownOpen?"선택 메뉴 접기":"선택해서 입력하기"}</button>{dropdownOpen&&<div className="experiment-dropdown"><fieldset className="experiment-criteria-menu"><legend>추천 기준 · 여러 개 선택 가능</legend>{RECOMMENDATION_CRITERIA.map(priority=><label key={priority}><input type="checkbox" checked={selectedPriorities.includes(priority)} onChange={()=>togglePriority(priority)}/>{priority}</label>)}</fieldset><label>상품 카테고리<select className="field" value={selectedCategory} onChange={e=>setSelectedCategory(e.target.value)}><option value="">전체</option>{catalogOptions.categories.map((category:string)=><option key={category} value={category}>{category}</option>)}</select></label><label>선호 특성<select className="field" value={selectedTags[0]??""} onChange={e=>setSelectedTags(e.target.value?[e.target.value]:[])}><option value="">선택 없음</option>{catalogOptions.tags.map((tag:string)=><option key={tag} value={tag}>{tag}</option>)}</select></label><p className="eyebrow">고정 예산 {Number(profile.gift_budget??0).toLocaleString()}원 · 변경할 수 없습니다.</p><button className="button" disabled={busy||!visible||!ready} onClick={()=>void sendChat("dropdown")}>선택한 기준 적용</button></div>}</>}
+      <p className="eyebrow">저장된 기준 · {normalizeCriteria(searchState?.selection_priorities??[]).join(" · ")||"중요 기준 없음"} · {searchState?.selected_category??"카테고리 전체"} · {(searchState?.preference_tags??[]).join(" · ")||"특성 선택 없음"}</p>
+    </section>}
 
     {(["criteria","candidates","comparison"].includes(phase)) && role==="giver" && guided && phase!=="comparison" && <p className="experiment-note">연구 버전 {EXPERIMENT.version} · 참여자의 요청은 현재 단계를 확인한 뒤에만 저장됩니다.</p>}
     </div>

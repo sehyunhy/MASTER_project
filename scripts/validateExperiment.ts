@@ -46,7 +46,7 @@ async function main(){
     if(!selection||selection.selected_by!==trial.decision_authority)report.errors.push(`${key}: 최종 선택 주체가 배정과 다름`);
     for(const phase of ["criteria","candidates","comparison"]){
       const row=(trial.trial_phase_exposures??[]).find((item:any)=>item.phase===phase);
-      if(!row||row.accumulated_ms<EXPERIMENT.minimumPhaseExposureMs)report.errors.push(`${key}: ${phase} 유효 노출 30초 미달`);
+      if(!row||row.accumulated_ms<EXPERIMENT.minimumPhaseExposureMs)report.errors.push(`${key}: ${phase} 유효 노출 20초 미달`);
     }
     if(participant.role==="recipient"){
       const stimulus=approved.find((item:any)=>item.id===trial.stimulus_id);

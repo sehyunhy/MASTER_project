@@ -1,6 +1,6 @@
 # 선물 선택 연구 시스템 · v4
 
-선물 주는 사람과 선물 받는 사람은 서로 다른 화면을 사용합니다. A/B에서는 선물 주는 사람이 후보 구성과 비교를 요청하고, C/D에서는 AI가 진행합니다. A/C에서는 선물 주는 사람이 최종 선택하고, B/D에서는 AI가 선택합니다. 세 단계의 유효 노출 시간은 각 30초이며, 심리척도와 주관적 평가는 종이 설문으로만 수집합니다.
+선물 주는 사람과 선물 받는 사람은 서로 다른 화면을 사용합니다. A/B에서는 선물 주는 사람이 후보 구성과 비교를 요청하고, C/D에서는 AI가 진행합니다. A/C에서는 선물 주는 사람이 최종 선택하고, B/D에서는 AI가 선택합니다. 세 단계의 유효 노출 시간은 각 20초이며, 심리척도와 주관적 평가는 종이 설문으로만 수집합니다.
 
 ## Walmart 상품에 맞춘 새 자극 버전
 
@@ -26,10 +26,12 @@
 
 5. 저장소 소유자가 GitHub에 코드를 올린 뒤 Vercel의 새 커밋 배포를 확인합니다. 기존 P001–P080은 v3 자료용이며 v4 사이트에서는 새 코드 **P081–P120(선물 주는 사람)**, **P121–P160(선물 받는 사람)**을 사용합니다. 이전 참가자에게 새 코드로 다시 참여시키지 마세요. 이전 기록은 DB에 남습니다.
 
+현재 DB를 유지하면서 이번 20초 기준을 적용하려면 코드 배포 전에 Supabase SQL Editor에서 [`0006_minimum_exposure_20s.sql`](supabase/migrations/0006_minimum_exposure_20s.sql)을 한 번 실행합니다. 이 파일은 세 노출 단계의 판정 기준만 바꾸며 저장된 실제 노출시간을 덮어쓰지 않습니다. 새 DB를 `one-click-setup.sql`로 만드는 경우에도 20초 기준이 들어 있습니다.
+
 ## 환경과 운영
 
 Vercel의 Framework Preset은 **Next.js**, Output Directory는 **Next.js default(빈 값)**입니다. `SUPABASE_URL`, `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `PARTICIPANT_SESSION_SECRET`, `ADMIN_PASSWORD`를 Production 환경에 설정합니다. Supabase Marketplace 변수에 프로젝트 ref 접두어가 붙는 경우도 서버가 읽습니다. `NEXT_PUBLIC_SUPABASE_ANON_KEY`를 서버 비밀 키 대신 사용할 수 없습니다. Claude 모델은 기본 `claude-sonnet-5`이며, 다른 모델이 필요할 때만 계정에서 사용 가능한 정확한 ID를 `ANTHROPIC_MODEL`에 설정합니다. 비밀값을 GitHub나 채팅에 붙여 넣지 마세요.
 
 원본 CSV와 대량 생성 SQL은 `.gitignore`로 제외됩니다. Vercel에는 CSV 파일을 올리지 않습니다. DB에 상품이 있으면 서버가 읽습니다. 새 배포의 커밋 SHA가 GitHub 최신 SHA와 같은지 확인하세요.
 
-`scripts/validateExperiment.ts`는 현재 v4 프로필·카탈로그·승인 자극과 완료 trial을 점검합니다. 실제 DB, Claude 호출, 브라우저의 30초 노출·탭 이탈·재개는 운영 환경에서 별도 파일럿이 필요합니다. SQL과 GitHub 배포는 연구자가 직접 수행합니다.
+`scripts/validateExperiment.ts`는 현재 v4 프로필·카탈로그·승인 자극과 완료 trial을 점검합니다. 실제 DB, Claude 호출, 브라우저의 20초 노출·탭 이탈·재개는 운영 환경에서 별도 파일럿이 필요합니다. SQL과 GitHub 배포는 연구자가 직접 수행합니다.
