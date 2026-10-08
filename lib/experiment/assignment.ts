@@ -9,8 +9,9 @@ export function conditionAt(sequenceId: keyof typeof EXPERIMENT.sequences, trial
   return EXPERIMENT.sequences[sequenceId][trialNumber - 1] as ConditionId;
 }
 
-export function profileAt(trialNumber: number, sequenceIndex: number): string {
-  return `R${((trialNumber - 1 + sequenceIndex) % 4) + 1}`;
+export function profileAt(trialNumber: number, sequenceIndex: number, profileVersion = "profiles-v1"): string {
+  const base = `R${((trialNumber - 1 + sequenceIndex) % 4) + 1}`;
+  return profileVersion === "profiles-v2" ? `${base}v2` : base;
 }
 
 /** Profile rotation for the canonical 40-slot role roster. The five high- and

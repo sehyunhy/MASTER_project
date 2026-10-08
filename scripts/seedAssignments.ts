@@ -7,9 +7,10 @@ async function main() {
   await seedFixtures(db);
 
   const role = process.env.PARTICIPANT_ROLE === "recipient" ? "recipient" : "giver";
-  // participant_code is globally unique. Reserve P001–P040 for giver slots and
-  // P041–P080 for recipient slots so the two roles cannot collide.
-  const firstCodeNumber = role === "recipient" ? 41 : 1;
+  // New study versions get new codes so earlier participants and trials remain intact.
+  const firstCodeNumber = EXPERIMENT.version === "4.0.0"
+    ? (role === "recipient" ? 121 : 81)
+    : (role === "recipient" ? 41 : 1);
   const rows = Array.from({ length: 40 }, (_, index) => {
     const participantNumber = index + 1;
     const groupIndex = participantNumber <= 20 ? participantNumber - 1 : participantNumber - 21;

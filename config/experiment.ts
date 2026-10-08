@@ -1,9 +1,9 @@
 export const EXPERIMENT = {
-  version: "3.0.0",
-  uiVersion: "3.0.0",
-  profileVersion: "profiles-v1",
-  candidateVersion: "walmart-2024-08-v1",
-  promptVersion: "gift-agent-v3",
+  version: "4.0.0",
+  uiVersion: "4.0.0",
+  profileVersion: "profiles-v2",
+  candidateVersion: "walmart-2024-08-curated-v2",
+  promptVersion: "gift-agent-v4",
   sequenceVersion: "williams-v1",
   participantsPerRole: 40,
   recipientPlaybackDurationMs: 90_000,
@@ -31,8 +31,8 @@ export const EXPERIMENT = {
 } as const;
 
 export const PROFILES = [
-  { id: "R1", name: "민서", age: 29, occupation: "서비스 기획자", hobbies: ["러닝", "웰니스"] as string[], recent_interest: "운동 기록 관리와 꾸준한 활동 루틴에 관심이 있습니다.", preference: "일상에서 부담 없이 사용할 수 있는 물건을 선호합니다.", dislike: "관리 과정이 복잡한 제품은 선호하지 않습니다.", lifestyle_context: "평일에는 도심에서 생활하고 주말에는 야외 활동을 즐깁니다.", gift_budget: 50000, gift_occasion: "생일" },
-  { id: "R2", name: "지훈", age: 31, occupation: "편집자", hobbies: ["커피", "독서"] as string[], recent_interest: "집에서 커피를 즐기는 방법과 새로운 책에 관심이 있습니다.", preference: "공간을 많이 차지하지 않고 오래 쓸 수 있는 물건을 선호합니다.", dislike: "향이 지나치게 강한 제품은 선호하지 않습니다.", lifestyle_context: "집에서 보내는 시간이 많고 조용한 여가를 즐깁니다.", gift_budget: 50000, gift_occasion: "감사 선물" },
-  { id: "R3", name: "서연", age: 27, occupation: "마케터", hobbies: ["여행", "사진"] as string[], recent_interest: "가까운 곳을 천천히 둘러보며 사진으로 기록하는 데 관심이 있습니다.", preference: "휴대하기 쉽고 여러 상황에서 활용할 수 있는 물건을 선호합니다.", dislike: "무게가 많이 나가는 물건은 선호하지 않습니다.", lifestyle_context: "주말마다 근교를 방문하고 새로운 장소를 기록합니다.", gift_budget: 50000, gift_occasion: "생일" },
-  { id: "R4", name: "도윤", age: 30, occupation: "연구원", hobbies: ["요리", "홈 라이프"] as string[], recent_interest: "집에서 간단한 요리를 만들고 식탁을 꾸미는 데 관심이 있습니다.", preference: "실용적이면서 디자인이 단정한 물건을 선호합니다.", dislike: "보관과 세척이 번거로운 제품은 선호하지 않습니다.", lifestyle_context: "평일 저녁과 주말에 집에서 식사를 준비합니다.", gift_budget: 50000, gift_occasion: "감사 선물" },
+  { id: "R1v2", name: "민서", age: 29, occupation: "서비스 기획자", hobbies: ["일상 관리", "스킨케어"] as string[], recent_interest: "집에서 쓰는 스킨케어와 세정 제품에 관심이 있습니다.", preference: "일상에서 부담 없이 사용할 수 있는 물건을 선호합니다.", dislike: "관리 과정이 복잡한 제품은 선호하지 않습니다.", lifestyle_context: "평일에는 도심에서 생활하고 집에서 일상 관리 시간을 보냅니다.", gift_budget: 50000, gift_occasion: "생일" },
+  { id: "R2v2", name: "지훈", age: 31, occupation: "편집자", hobbies: ["독서", "집에서 쉬는 시간"] as string[], recent_interest: "집에서 책을 읽고 휴식을 취하는 공간에 관심이 있습니다.", preference: "집에서 자주 사용할 수 있는 패브릭 소품을 선호합니다.", dislike: "향이 지나치게 강한 제품은 선호하지 않습니다.", lifestyle_context: "집에서 보내는 시간이 많고 조용한 여가를 즐깁니다.", gift_budget: 50000, gift_occasion: "감사 선물" },
+  { id: "R3v2", name: "서연", age: 27, occupation: "마케터", hobbies: ["사진 기록", "작은 공간 꾸미기"] as string[], recent_interest: "찍은 사진을 전시하고 집의 작은 공간을 꾸미는 데 관심이 있습니다.", preference: "공간에 어울리는 소품을 선호합니다.", dislike: "지나치게 큰 물건은 선호하지 않습니다.", lifestyle_context: "주말에 사진을 정리하고 집의 공간을 꾸밉니다.", gift_budget: 50000, gift_occasion: "생일" },
+  { id: "R4v2", name: "도윤", age: 30, occupation: "연구원", hobbies: ["요리", "식탁 꾸미기"] as string[], recent_interest: "집에서 간단한 요리를 만들고 식탁을 꾸미는 데 관심이 있습니다.", preference: "실용적이면서 디자인이 단정한 물건을 선호합니다.", dislike: "보관과 세척이 번거로운 제품은 선호하지 않습니다.", lifestyle_context: "평일 저녁과 주말에 집에서 식사를 준비합니다.", gift_budget: 50000, gift_occasion: "감사 선물" },
 ];

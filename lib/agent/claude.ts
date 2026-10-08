@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { anthropicModel, shortResponseOptions } from "@/lib/agent/model";
+import { EXPERIMENT } from "@/config/experiment";
 
 const intentSchema=z.object({
   intent:z.enum(["criteria_update","search_request","compare_request","explain","final_choice","clarify"]),
@@ -71,7 +72,7 @@ export async function explainWithCatalogTools(input:{db:any;trialId:string;profi
           if(v.tags.some(tag=>!input.state.preference_tags?.includes(tag)))throw new Error("TAG_NOT_ALLOWED");
           let query=input.db.from("product_catalog")
             .select("source_product_id,product_name_original,product_name_ko,category,price_experiment,currency_experiment,price_original,currency_original,specifications,description,image_url,search_tags_ko")
-            .eq("dataset_version","walmart-2024-08-v1").eq("experiment_eligible",true).eq("is_active",true)
+            .eq("dataset_version",EXPERIMENT.candidateVersion).eq("experiment_eligible",true).eq("is_active",true)
             .contains("profile_codes",[input.profileCode]).lte("price_experiment",input.budget);
           if(v.category)query=query.eq("category",v.category);
           if(v.tags.length)query=query.overlaps("search_tags_ko",v.tags);

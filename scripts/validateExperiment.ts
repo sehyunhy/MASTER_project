@@ -8,7 +8,7 @@ async function main(){
   const report:any={generatedAt:new Date().toISOString(),experimentVersion:EXPERIMENT.version,datasetVersion:EXPERIMENT.candidateVersion,errors:[],warnings:[],checks:{}};
   try{report.checks.williams=validateWilliamsSequences();}catch(e){report.errors.push(String(e));}
   const [{data:profiles,error:profileError},{data:catalog,error:catalogError},{data:stimuli,error:stimulusError},{data:trials,error:trialError}]=await Promise.all([
-    db.from("recipient_profiles").select("profile_code,gift_budget"),
+    db.from("recipient_profiles").select("profile_code,gift_budget").eq("version",EXPERIMENT.profileVersion),
     db.from("product_catalog").select("source_product_id,profile_codes,price_experiment,experiment_eligible,is_active,dataset_version,source_type"),
     db.from("recipient_stimuli").select("id,scenario_id,profile_code,version,source_kind,candidate_snapshots,final_source_product_id,review_status,frozen_at,candidate_set_hash"),
     db.from("trials").select("id,participant_id,trial_number,profile_id,scenario_id,condition_id,execution_autonomy,decision_authority,status,stimulus_id,stimulus_version,stimulus_source,candidate_set_hash,final_selections(selected_by,selected_candidate_id),trial_candidates(gift_candidate_id,product_snapshot,display_order),trial_phase_exposures(phase,accumulated_ms),event_logs(event_type,event_origin,actor_type,trial_number,phase),participants(role,participant_code,experiment_version)").eq("experiment_version",EXPERIMENT.version).limit(10000),

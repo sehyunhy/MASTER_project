@@ -89,7 +89,10 @@ export async function GET(request: Request) {
         .eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot").eq("experiment_eligible",true).eq("is_active",true)
         .contains("profile_codes",[active.recipient_profiles.profile_code]).lte("price_experiment",active.recipient_profiles.gift_budget);
       if(optionsError)throw optionsError;
-      catalogOptions={categories:[...new Set((options??[]).map((x:any)=>x.category))],tags:[...new Set((options??[]).flatMap((x:any)=>x.search_tags_ko??[]))],eligibleCount:(options??[]).length,items:options??[]};
+      const available=options??[];
+      const categories=[...new Set(available.map((x:any)=>x.category))].filter(category=>available.filter((x:any)=>x.category===category).length>=3);
+      const tags=[...new Set(available.flatMap((x:any)=>x.search_tags_ko??[]))].filter(tag=>available.filter((x:any)=>(x.search_tags_ko??[]).includes(tag)).length>=3);
+      catalogOptions={categories,tags,eligibleCount:available.length,items:available};
     }
     return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY):undefined });
   } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "데이터를 불러오지 못했습니다." }, { status: 500 }); }
