@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logEvent } from "@/lib/events";
 import { participantSessionMatches } from "@/lib/auth/participant";
+import { EXPERIMENT } from "@/config/experiment";
+
+const practiceProductIds = ["10308385", "36995775", "864008591"];
 
 const expected = [
   { comparison: "giver", decision: "giver" },
@@ -26,7 +29,16 @@ export async function GET(request: Request) {
       db.from("training_attempts").select("id",{count:"exact",head:true}).eq("participant_id",participantId).eq("passed",true),
     ]);
     if(error)throw error;
-    return NextResponse.json({role:participant.role,passed:Boolean(passed),checks:checks??[]});
+    if(passed)return NextResponse.json({role:participant.role,passed:true,checks:checks??[],practiceProducts:[]});
+    const {data:catalog,error:catalogError}=await db.from("product_catalog")
+      .select("source_product_id,product_name_ko,product_name_original,category,price_experiment,price_original,image_url,description,source_url,source_timestamp_raw")
+      .eq("dataset_version",EXPERIMENT.candidateVersion).eq("experiment_eligible",true).eq("is_active",true)
+      .contains("profile_codes",["R4v2"]).in("source_product_id",practiceProductIds);
+    if(catalogError)throw catalogError;
+    const practiceProducts=practiceProductIds.map(id=>(catalog??[]).find(item=>item.source_product_id===id));
+    if(practiceProducts.some(item=>!item||!item.image_url||item.price_experiment==null))
+      return NextResponse.json({error:"연습 상품 3개의 이미지와 연구용 가격이 준비되지 않았습니다. 연구자가 v4 상품과 관찰 자극을 승인해야 합니다."},{status:409});
+    return NextResponse.json({role:participant.role,passed:false,checks:checks??[],practiceProducts});
   } catch(e) { return NextResponse.json({error:(e as Error).message},{status:401}); }
 }
 
@@ -37,6 +49,12 @@ export async function POST(request: Request) {
   try {
     const {db,participant}=await context(input.participantId);
     if(input.action==="practice_event") {
+      if(input.eventType==="practice_product_detail_opened") {
+        if(![0,1].includes(input.scenarioIndex)||!practiceProductIds.includes(input.sourceProductId))
+          return NextResponse.json({error:"연습 상품 정보가 올바르지 않습니다."},{status:400});
+        await logEvent({participantId:participant.id,eventType:input.eventType,payload:{training:true,scenarioIndex:input.scenarioIndex,sourceProductId:input.sourceProductId},actorType:"participant",eventOrigin:"participant"});
+        return NextResponse.json({ok:true});
+      }
       if(!["observation_started","practice_replayed","practice_step_shown"].includes(input.eventType)||![0,1].includes(input.scenarioIndex))return NextResponse.json({error:"연습 이벤트가 올바르지 않습니다."},{status:400});
       const actors=[ ["giver","giver","giver","agent","giver","agent","giver","agent"], ["giver","giver","agent","agent","agent","agent","agent"] ];
       const scripted=input.eventType==="practice_step_shown";

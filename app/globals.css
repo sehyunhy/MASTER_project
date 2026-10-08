@@ -208,6 +208,9 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
 .training-shell .experiment-transcript > h2 { margin: 0 0 16px; font-size: 19px; }
 .training-shell .experiment-card-list { width: 100%; }
 .training-shell .experiment-candidate-summary { margin: 8px 0; color: #4b627f; font-size: 12px; }
+.training-shell .experiment-candidate details { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e0e9f5; }
+.training-shell .experiment-candidate summary { color: #176bdb; font-size: 12px; font-weight: 700; cursor: pointer; }
+.training-shell .experiment-candidate details a { display: inline-block; margin-top: 8px; font-size: 12px; }
 
 @media (max-width: 900px) {
   .experiment-main-grid { grid-template-columns: 1fr; gap: 8px; }
