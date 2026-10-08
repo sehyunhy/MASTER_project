@@ -155,6 +155,9 @@ body:has(.experiment-shell) { background: #eaf1f9; }
 .experiment-product-image { width: 100%; height: 150px; object-fit: contain; border-radius: 10px; background: #f3f7fc; }
 .experiment-candidate h3 { margin: 0 0 7px; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
 .experiment-candidate .body { margin: 6px 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.experiment-product-summary { margin: 9px 0 4px; padding-left: 18px; color: #354b63; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.experiment-product-summary li + li { margin-top: 5px; }
+.experiment-product-summary li::marker { color: #176bdb; }
 .experiment-candidate .eyebrow { overflow-wrap: anywhere; }
 .experiment-candidate .button { width: 100%; margin-top: 10px; font-size: 13px; }
 .experiment-candidate-summary { min-width: 0; }
@@ -254,6 +257,7 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
   .experiment-product-image { width: 94px; height: 94px; }
   .experiment-candidate h3 { font-size: 14px; }
   .experiment-candidate .body { font-size: 12px; }
+  .experiment-product-summary { font-size: 12px; }
   .experiment-task { padding: 14px; }
   .experiment-task h2 { font-size: 16px; }
   .experiment-task .body { font-size: 13px; }

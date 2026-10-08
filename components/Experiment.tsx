@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EXPERIMENT } from "@/config/experiment";
+import { productSummaryKo } from "@/lib/catalog/productSummaryKo";
 import { normalizeCriteria, participantCriterionText, RECOMMENDATION_CRITERIA, toggleCriterion } from "@/lib/experiment/criteria";
 
 type Role = "giver" | "recipient";
@@ -58,14 +59,18 @@ function CandidateCard({ candidate, details = false, selected = false, onSelect,
   const specs = p.specifications ?? {};
   const rows = (Array.isArray(specs)?specs.map((item:Row)=>[String(item.name??"규격"),item.value] as [string,unknown]):Object.entries(specs)).filter(([key,value]) => key !== "configuration_label" && value !== null && value !== undefined && value !== "").slice(0,12);
   return <article className={"experiment-candidate" + (selected ? " is-selected" : "")}>
-    <div className="experiment-candidate-summary"><span className="experiment-candidate-label">후보 {labelFor(candidate.display_order)} · {p.category ?? "상품"}</span><strong className="experiment-price">{Number(p.price ?? 0).toLocaleString()}원</strong></div>
+    <div className="experiment-candidate-summary"><span className="experiment-candidate-label">후보 {labelFor(candidate.display_order)}</span><strong className="experiment-price">{Number(p.price ?? 0).toLocaleString()}원</strong></div>
     <div className="experiment-product-head">
       <img className="experiment-product-image" data-exposure-phase="candidates" src={p.image_url || "/products/category-illustration.svg"} alt="제품 종류를 나타내는 예시 이미지" loading="eager" onError={e => { const image=e.currentTarget;const fallback="/products/category-illustration.svg";if(image.getAttribute("src")!==fallback)image.src=fallback;else image.dataset.imageFailed="true"; }} />
-      <div><h3>{p.product_name ?? "상품 정보"}</h3>{p.product_name_original&&<p className="eyebrow">원본명 · {p.product_name_original}</p>}{p.brand&&<p className="eyebrow">브랜드 · {p.brand}</p>}<p className="body">{p.description}</p><p className="eyebrow">2024년 8월 CSV 원본가 · {Number(p.price_original??0).toFixed(2)} {p.currency_original??"USD"}</p></div>
+      <div><h3>{p.product_name ?? "상품 정보"}</h3><ul className="experiment-product-summary">{productSummaryKo(p.source_product_id).map((fact,index)=><li key={index}>{fact}</li>)}</ul></div>
     </div>
     {p.fit_reason && <p className="experiment-fit"><b>추천 이유</b> · {p.fit_reason}</p>}
-    {onToggle && <button type="button" className="button secondary" onClick={onToggle}>{details?"상세 접기":"상세 보기"}</button>}
+    {onToggle && <button type="button" className="button secondary" onClick={onToggle}>{details?"원본 정보 접기":"원본 정보 보기"}</button>}
     {details && <div className="experiment-facts"><p><b>가격 기준</b> · 실험용 고정 환산가</p>
+      {p.product_name_original && <p><b>원본 상품명</b> · {p.product_name_original}</p>}
+      {p.brand && <p><b>브랜드</b> · {p.brand}</p>}
+      {p.description_original && <p><b>CSV 원문 설명</b> · {String(p.description_original).replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim()}</p>}
+      {p.price_original != null && <p><b>2024년 8월 CSV 원본가</b> · {Number(p.price_original).toFixed(2)} {p.currency_original??"USD"}</p>}
       {specs.configuration_label && <p><b>구성</b> · {specs.configuration_label}</p>}
       {rows.map(([key,value]) => <p key={key}><b>{key}</b> · {Array.isArray(value) ? value.join(", ") : String(value)}</p>)}
       {Array.isArray(p.use_cases) && <p><b>사용 상황</b> · {p.use_cases.join(" · ")}</p>}
