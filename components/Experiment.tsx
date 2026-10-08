@@ -100,6 +100,7 @@ export function Experiment({ role }: { role: Role }) {
   const [ready,setReady] = useState(false);
   const [visible,setVisible] = useState(true);
   const [exposureMs,setExposureMs] = useState(0);
+  const [visibleExposureMs,setVisibleExposureMs] = useState(0);
   const [selectedId,setSelectedId] = useState("");
   const [detailsOpen,setDetailsOpen] = useState<Record<string,boolean>>({});
   const viewedCandidates = useRef(new Set<string>());
@@ -146,6 +147,7 @@ export function Experiment({ role }: { role: Role }) {
 
   const trial: Row|undefined = data?.activeTrial;
   const phase = (trial?.current_phase ?? "criteria") as Phase;
+  const hasExposureClock=["criteria","candidates","comparison"].includes(phase);
   const guided = trial?.execution_autonomy === "human_guided";
   const humanDecision = trial?.decision_authority === "human";
   const messages: Row[] = useMemo(() => [...(trial?.trial_messages ?? [])].sort((a:Row,b:Row) => new Date(a.created_at).getTime()-new Date(b.created_at).getTime()),[trial?.trial_messages]);
@@ -349,6 +351,14 @@ export function Experiment({ role }: { role: Role }) {
   },[trial?.id,phase]);
 
   useEffect(() => {
+    setVisibleExposureMs(exposureMs);
+    if(!hasExposureClock||!ready||!visible||exposureMs>=EXPERIMENT.minimumPhaseExposureMs)return;
+    const startedAt=performance.now();
+    const timer=window.setInterval(()=>setVisibleExposureMs(Math.min(EXPERIMENT.minimumPhaseExposureMs-1,exposureMs+performance.now()-startedAt)),250);
+    return()=>window.clearInterval(timer);
+  },[trial?.id,phase,hasExposureClock,exposureMs,ready,visible]);
+
+  useEffect(() => {
     if (!trial || phase!=="candidates" || messages.some((message:Row)=>message.message_type==="product_cards") || !tabId) return;
     setBusy(true);
     fetch("/api/experiment/phase",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"retry_generation",participantId,trialId:trial.id,tabId})})
@@ -468,14 +478,15 @@ export function Experiment({ role }: { role: Role }) {
   if (!trial) return <section className="panel"><p className="eyebrow">연구 완료</p><h1 className="title">참여해 주셔서 감사합니다</h1><p className="body">모든 단계가 저장되었습니다.</p><a className="button" href="/complete">완료</a></section>;
 
   const profile=trial.recipient_profiles ?? {};
-  const exposurePercent=Math.min(100,Math.round(exposureMs/EXPERIMENT.minimumPhaseExposureMs*100));
+  const exposurePercent=Math.min(100,visibleExposureMs/EXPERIMENT.minimumPhaseExposureMs*100);
+  const remainingExposureSeconds=Math.max(0,Math.ceil((EXPERIMENT.minimumPhaseExposureMs-visibleExposureMs)/1000));
   const allGuidedAnswers=EXPERIMENT.questions.every(q=>Boolean(answers[q.id]));
   const canRequest=ready && visible && exposureMs>=EXPERIMENT.minimumPhaseExposureMs && !busy;
   const taskOwner=guided?"선물 주는 사람":"Agent";
   const decisionOwner=humanDecision?"선물 주는 사람":"Agent";
   const stageIndex=progressStages.findIndex(stage=>stage.id===phase);
 
-  return <main className={`experiment-shell role-${role} phase-${phase}`}>
+  return <main className={`experiment-shell role-${role} phase-${phase}${hasExposureClock?" has-exposure-clock":""}`}>
     <header className="experiment-header">
       <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>선물 추천 Agent</span><span className="experiment-brand-role">{role==="giver"?"선물 주는 사람":"선물 받는 사람"}</span></div>
       <p className="experiment-trial-counter">선물 선택 {trial.trial_number} / 4 · {role==="giver"?"직접 참여":"과정 관찰"}</p>
@@ -522,10 +533,10 @@ export function Experiment({ role }: { role: Role }) {
 
 
 
-    {(["criteria","candidates","comparison"].includes(phase)) && <section className="experiment-clock card" aria-live="polite">
-      <div className="experiment-clock-line"><b>이 화면을 확인한 시간</b><span>{Math.floor(exposureMs/1000)} / {Math.ceil(EXPERIMENT.minimumPhaseExposureMs/1000)}초</span></div>
-      <div className="experiment-progress"><span style={{width:String(exposurePercent)+"%"}}/></div>
-      <p className="eyebrow">{!visible?"화면이 보일 때 시간이 다시 누적됩니다.":!ready?"화면을 준비하고 있습니다.":exposureMs<EXPERIMENT.minimumPhaseExposureMs?"내용을 확인해 주세요.":"최소 확인 시간이 충족되었습니다."}</p>
+    {hasExposureClock && <section className="experiment-clock card" aria-label="현재 단계 확인 시간">
+      <div className="experiment-clock-line"><b>{phase==="criteria"?"정보":phase==="candidates"?"후보":"비교"} 확인 시간</b><strong className="experiment-clock-count">{!ready?"준비 중":exposureMs>=EXPERIMENT.minimumPhaseExposureMs?"확인 완료":`${remainingExposureSeconds}초 남음`}</strong></div>
+      <div className="experiment-progress" role="progressbar" aria-label="현재 단계 확인 시간 진행률" aria-valuemin={0} aria-valuemax={EXPERIMENT.minimumPhaseExposureMs/1000} aria-valuenow={Math.min(EXPERIMENT.minimumPhaseExposureMs/1000,Math.floor(visibleExposureMs/1000))}><span style={{width:String(exposurePercent)+"%"}}/></div>
+      <p className="eyebrow">{!visible?"화면을 벗어나 시간이 멈췄습니다.":!ready?"내용을 준비하고 있습니다.":exposureMs<EXPERIMENT.minimumPhaseExposureMs?`${Math.floor(visibleExposureMs/1000)} / ${EXPERIMENT.minimumPhaseExposureMs/1000}초 · 내용을 살펴봐 주세요.`:"최소 확인 시간이 충족되었습니다."}</p>
     </section>}
 
     {phase==="criteria" && role==="giver" && guided && <section className="experiment-task card"><p className="eyebrow">선물 주는 사람이 과업 요청</p><h2>기준을 입력한 뒤 후보 구성을 요청해 주세요</h2><button className="button" disabled={!canRequest||!criteriaFilled||!catalogReady} onClick={()=>void advance(true)}>{busy?"후보를 준비하고 있습니다…":"이 기준으로 후보를 찾아주세요"}</button>{!criteriaFilled&&<p className="eyebrow">대화에서 기준을 전송하거나 선택 메뉴에서 중요 기준을 적용해 주세요.</p>}</section>}

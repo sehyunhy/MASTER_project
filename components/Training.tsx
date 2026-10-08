@@ -78,6 +78,8 @@ export function Training() {
   const currentStage=active?.segment??next?.segment??"criteria";
   const currentStageIndex=practiceStages.findIndex(stage=>stage.id===currentStage);
   const timedPlayback=role==="recipient"||scenario===1;
+  const showExposureClock=started&&timedPlayback&&TIMED_PRACTICE_SEGMENTS.has(currentStage);
+  const remainingStageSeconds=Math.max(0,Math.ceil((EXPERIMENT.minimumPhaseExposureMs-stageExposureMs)/1000));
   useEffect(()=>{
     if(!started||cursor<0||!pageVisible)return;
     const frame=requestAnimationFrame(()=>newestStepRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
@@ -165,7 +167,7 @@ export function Training() {
   }
   if(!role)return <section className="panel"><p>참가자 역할을 확인하고 있습니다.</p>{error&&<p role="alert">{error}</p>}</section>;
   if(finished)return <main className="experiment-shell training-shell"><section className="panel" style={{maxWidth:820,margin:"24px auto"}}><p className="eyebrow">역할별 연습 완료</p><h1 className="title">연구를 시작할 수 있습니다</h1><p className="body">본실험에서는 과업 진행 방식과 최종 결정 주체의 다른 조합도 나타날 수 있습니다. 심리척도는 종이 설문으로 응답합니다.</p><a className="button" href={role==="giver"?"/experiment/giver":"/experiment/recipient"}>본실험 시작</a></section></main>;
-  return <main className="experiment-shell training-shell">
+  return <main className={`experiment-shell training-shell${showExposureClock?" has-exposure-clock":""}`}>
     <header className="experiment-header">
       <div className="experiment-brand"><strong>선물 추천 Agent</strong><span>연습 {scenario+1} / 2</span></div>
       <p className="eyebrow">{role==="recipient"?"선물 받는 사람 관찰 연습":"선물 주는 사람 조작 연습"}</p>
@@ -177,7 +179,7 @@ export function Training() {
     {practiceProfile&&<section className="experiment-task card" aria-label="연습용 선물 받는 사람 정보"><p className="eyebrow">연습용 선물 받는 사람 · 연구자가 정한 정보</p><h2>{practiceProfile.name}</h2><p className="body">{practiceProfile.age}세 · {practiceProfile.occupation} · {practiceProfile.gift_occasion}</p><p className="body">관심사: {practiceProfile.hobbies.join(" · ")}</p><p className="body">{practiceProfile.recent_interest} {practiceProfile.preference} {practiceProfile.dislike}</p><p className="body">고정 예산 {practiceProfile.gift_budget.toLocaleString()}원</p></section>}
     {error&&<p role="alert" className="experiment-error">{error}</p>}
     {!started?<section className="experiment-task card"><h2>{scenario===0?"선물 주는 사람 요청과 선물 주는 사람 최종 선택":"Agent 자동 진행과 Agent 최종 선택"}</h2><p className="body">{scenario===0?"선물 주는 사람의 입력, 상품 후보, 비교, 결정을 시간순으로 확인합니다.":"Agent가 제공된 인물 정보를 읽고 상품 후보를 제시한 뒤 비교하고 하나를 선택하는 과정을 확인합니다."}</p><button type="button" className="button" onClick={start}>{role==="recipient"?"관찰 시작":"연습 시작"}</button></section>:<>
-      {timedPlayback&&TIMED_PRACTICE_SEGMENTS.has(currentStage)&&<section className="experiment-clock card" aria-live="polite"><div className="experiment-clock-line"><b>{scenario===1&&currentStage==="criteria"?"정보":practiceStages[currentStageIndex]?.label} 확인 시간</b><span>{Math.floor(Math.min(stageExposureMs,EXPERIMENT.minimumPhaseExposureMs)/1000)} / {EXPERIMENT.minimumPhaseExposureMs/1000}초</span></div><div className="experiment-progress"><span style={{width:`${Math.min(100,stageExposureMs/EXPERIMENT.minimumPhaseExposureMs*100)}%`}}/></div><p className="eyebrow">{pageVisible?"현재 화면을 보는 시간이 누적됩니다.":"다른 화면에 있는 동안 시간은 멈춥니다."}</p></section>}
+      {showExposureClock&&<section className="experiment-clock card" aria-label="현재 연습 단계 확인 시간"><div className="experiment-clock-line"><b>{scenario===1&&currentStage==="criteria"?"정보":practiceStages[currentStageIndex]?.label} 확인 시간</b><strong className="experiment-clock-count">{remainingStageSeconds===0?"확인 완료":`${remainingStageSeconds}초 남음`}</strong></div><div className="experiment-progress" role="progressbar" aria-label="현재 연습 단계 확인 시간 진행률" aria-valuemin={0} aria-valuemax={EXPERIMENT.minimumPhaseExposureMs/1000} aria-valuenow={Math.min(EXPERIMENT.minimumPhaseExposureMs/1000,Math.floor(stageExposureMs/1000))}><span style={{width:`${Math.min(100,stageExposureMs/EXPERIMENT.minimumPhaseExposureMs*100)}%`}}/></div><p className="eyebrow">{pageVisible?`${Math.floor(Math.min(stageExposureMs,EXPERIMENT.minimumPhaseExposureMs)/1000)} / ${EXPERIMENT.minimumPhaseExposureMs/1000}초 · 내용을 살펴봐 주세요.`:"화면을 벗어나 시간이 멈췄습니다."}</p></section>}
       <section className="experiment-transcript" aria-label="연습용 대화 재생">
         <h2>{scenario===0?"선물 주는 사람과 Agent의 대화":"Agent의 자동 추천 과정"}</h2>
         {visibleSteps.map((step,index)=><article key={index} ref={index===visibleSteps.length-1?newestStepRef:null} className={"experiment-message "+(step.actor==="agent"?"from-agent":"from-person")}>

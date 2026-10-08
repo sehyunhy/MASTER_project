@@ -37,8 +37,10 @@ button, input { font: inherit; }
 .experiment-fit, .experiment-facts { color: #53616a; font-size: 14px; line-height: 1.7; }
 .experiment-facts { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 4px 16px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .experiment-facts p { margin: 3px 0; }
-.experiment-clock { position: sticky; bottom: 10px; z-index: 2; margin: 16px 0; box-shadow: 0 4px 20px #20302b16; }
+.experiment-shell.has-exposure-clock { padding-bottom: 170px; }
+.experiment-clock { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); left: 12px; z-index: 8; width: min(620px, calc(100vw - 24px)); margin: 0 auto; box-shadow: 0 8px 28px #20302b26; }
 .experiment-clock-line { font-size: 14px; }
+.experiment-clock-count { color: #176bdb; font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .experiment-progress { height: 8px; margin: 11px 0 5px; border-radius: 99px; background: #e8eeee; overflow: hidden; }
 .experiment-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s linear; }
 .experiment-clock .eyebrow { margin: 7px 0 0; }
@@ -188,9 +190,8 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
 .experiment-dropdown .field { margin: 7px 0 0; font-weight: 400; }
 .experiment-dropdown .eyebrow { grid-column: 1 / -1; margin: 0; }
 .experiment-dropdown .button { justify-self: start; }
-.experiment-clock { bottom: 10px; z-index: 3; margin: 14px 0; padding: 12px 15px; background: #fff; box-shadow: 0 6px 24px #24528623; }
+.experiment-clock { padding: 12px 15px; background: #fff; }
 .experiment-clock-line { color: #355572; font-size: 12px; }
-.experiment-clock-line span { color: #176bdb; font-weight: 800; }
 .experiment-progress { height: 6px; margin: 9px 0 4px; background: #e4eefb; }
 .experiment-progress span { background: linear-gradient(90deg, #31a7f5, #176bdb); }
 .experiment-clock .eyebrow { margin: 4px 0 0; font-size: 11px; }
@@ -276,7 +277,9 @@ div.experiment-candidate-summary { display: flex; align-items: baseline; justify
   .experiment-chat-input { flex-direction: row; }
   .experiment-chat-input .button { width: auto; min-width: 58px; padding-inline: 10px; font-size: 13px; }
   .experiment-dropdown { grid-template-columns: 1fr; padding: 12px; }
-  .experiment-clock { position: static; }
+  .experiment-clock { padding: 10px 12px; }
+  .role-giver .experiment-clock { bottom: calc(82px + env(safe-area-inset-bottom)); }
+  .experiment-shell.role-giver.has-exposure-clock { padding-bottom: 235px; }
   .experiment-clock-line { align-items: flex-start; }
   .experiment-clock-line b { max-width: 52%; }
   .experiment-table { min-width: 620px; }
