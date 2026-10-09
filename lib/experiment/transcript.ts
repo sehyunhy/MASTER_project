@@ -1,3 +1,5 @@
+import { buildProductComparisonEvidence, type ProductEvidenceContext } from "@/lib/catalog/productEvidence";
+
 export async function storeTranscriptMessage(db: any, input: {
   trialId: string; phase: string; actorType: "participant"|"agent"|"system"|"simulated_giver";
   messageType: "text"|"product_cards"|"comparison"|"task_request"|"decision";
@@ -15,15 +17,17 @@ export async function storeTranscriptMessage(db: any, input: {
   return data;
 }
 
-export function buildComparison(candidates: any[]) {
+export function buildComparison(candidates: any[], context: ProductEvidenceContext = {}) {
   const ordered=[...candidates].sort((a,b)=>a.display_order-b.display_order);
   return ordered.map(candidate=>{
     const p=candidate.product_snapshot??candidate.gift_candidates?.product_snapshot??{};
+    const evidence=buildProductComparisonEvidence(candidate,ordered,context);
     return {
       label:String.fromCharCode(64+candidate.display_order),
       product_name:p.product_name??candidate.gift_candidates?.product_name,
       price:p.price??candidate.gift_candidates?.price,
       currency:p.currency??"KRW",
+      ...evidence,
       configuration:Array.isArray(p.specifications)?p.specifications.slice(0,3).map((item:any)=>`${item.name}: ${item.value}`).join(" · ")||"정보 없음":p.specifications?.configuration_label??"정보 없음",
       use_case:Array.isArray(p.use_cases)?p.use_cases.join(" · "):"정보 없음",
       strengths:Array.isArray(p.strengths)?p.strengths.join(" · "):"정보 없음",
@@ -35,8 +39,6 @@ export function buildComparison(candidates: any[]) {
 
 export function comparisonSummary(rows: ReturnType<typeof buildComparison>) {
   if (rows.length !== 3) throw new Error("Comparison requires exactly three displayed candidates.");
-  const prices=rows.map(row=>Number(row.price));
-  const low=rows[prices.indexOf(Math.min(...prices))];
-  const high=rows[prices.indexOf(Math.max(...prices))];
-  return `${low.label}번은 ${low.product_name}으로 ${Number(low.price).toLocaleString()}원이며, ${low.strengths}. ${high.label}번은 ${high.product_name}으로 ${Number(high.price).toLocaleString()}원이며, ${high.limitations}. 세 후보의 사용 상황·규격·관리 방식은 아래 표에서 같은 기준으로 비교할 수 있습니다.`;
+  const prices=rows.map(row=>`${row.label} ${Number(row.price).toLocaleString()}원`);
+  return `세 후보의 연구용 가격은 ${prices.join(" · ")}입니다. 각 상품의 실제 특징, 사용 목적, 선물 적합성 해석과 고려할 점은 비교표에서 확인해 주세요.`;
 }

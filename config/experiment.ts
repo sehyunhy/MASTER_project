@@ -1,3 +1,8 @@
+export const MINIMUM_EXPOSURE_MS = {
+  practice: { giver: 15_000, recipient: 15_000 },
+  experiment: { giver: 20_000, recipient: 20_000 },
+} as const;
+
 export const EXPERIMENT = {
   version: "4.0.0",
   uiVersion: "4.0.0",
@@ -6,7 +11,7 @@ export const EXPERIMENT = {
   promptVersion: "gift-agent-v4",
   sequenceVersion: "williams-v1",
   participantsPerRole: 40,
-  minimumPhaseExposureMs: 20_000,
+  minimumPhaseExposureMs: MINIMUM_EXPOSURE_MS.experiment.giver,
   heartbeatIntervalMs: 3_000,
   guidedAnalysisDurationMs: 5_000,
   autonomousAnalysisDurationMs: 5_000,

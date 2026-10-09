@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { participantSessionMatches } from "@/lib/auth/participant";
 import { storeTranscriptMessage } from "@/lib/experiment/transcript";
 import { EXPERIMENT } from "@/config/experiment";
+import { loadApprovedRelationshipCopy, relationshipForParticipant } from "@/lib/experiment/relationship";
 
 export async function GET(request: Request) {
   const participantId = new URL(request.url).searchParams.get("participantId");
@@ -94,6 +95,7 @@ export async function GET(request: Request) {
       const tags=[...new Set(available.flatMap((x:any)=>x.search_tags_ko??[]))].filter(tag=>available.filter((x:any)=>(x.search_tags_ko??[]).includes(tag)).length>=3);
       catalogOptions={categories,tags,eligibleCount:available.length,items:available};
     }
-    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY):undefined });
+    const relationshipCopy = active ? await loadApprovedRelationshipCopy(db) : null;
+    return NextResponse.json({ participant: p, trials: normalized, activeTrial: active ?? null,stimulusSource:stimulus?.source_kind??null,searchState,catalogOptions,relationship:relationshipForParticipant(p.intimacy_condition,p.role,relationshipCopy),aiConfigured:p.role==="giver"?Boolean(process.env.ANTHROPIC_API_KEY):undefined });
   } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "데이터를 불러오지 못했습니다." }, { status: 500 }); }
 }

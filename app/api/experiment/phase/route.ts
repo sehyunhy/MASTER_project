@@ -214,10 +214,21 @@ export async function POST(request:Request) {
         if((actor==="human_request"&&!priorCompareRequest)||actor==="simulated_giver")await storeTranscriptMessage(db,{trialId:trial.id,phase,actorType:actor==="simulated_giver"?"simulated_giver":"participant",messageType:"task_request",content:stimulus?.transcript?.request_comparison??"세 후보의 차이를 비교해주세요.",idempotencyKey:"request-comparison",simulatedActorEvent:actor==="simulated_giver",eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
         const {data:candidates,error:candidateError}=await db.from("trial_candidates").select("display_order,product_snapshot,gift_candidates(product_name,price)").eq("trial_id",trial.id).order("display_order");
         if(candidateError)throw candidateError;
-        const comparison=buildComparison(candidates??[]);
+        const [{data:comparisonProfile,error:profileError},{data:comparisonState,error:stateError}]=await Promise.all([
+          db.from("recipient_profiles").select("name,profile_code,hobbies,recent_interest,preference,dislike,gift_budget").eq("id",trial.profile_id).single(),
+          db.from("trial_search_states").select("selection_priorities").eq("trial_id",trial.id).maybeSingle(),
+        ]);
+        if(profileError||stateError||!comparisonProfile)throw profileError??stateError??new Error("PROFILE_MISSING");
+        const observedPriority=observing?stimulus?.transcript?.criteria_priority:null;
+        const priorities=Array.isArray(comparisonState?.selection_priorities)&&comparisonState.selection_priorities.length
+          ?comparisonState.selection_priorities:typeof observedPriority==="string"&&observedPriority?[observedPriority]:[];
+        const comparison=buildComparison(candidates??[],{
+          profile:comparisonProfile,priorities,budget:comparisonProfile.gift_budget,
+          intimacyCondition:participant.intimacy_condition,
+        });
         const summary=observing?stimulus.transcript.comparison_agent:comparisonSummary(comparison);
         await saveEvent(context,"agent_task_completed","comparison","agent",{taskId:"compare_candidates"});
-        await storeTranscriptMessage(db,{trialId:trial.id,phase:"comparison",actorType:"agent",messageType:"comparison",content:summary,payload:{rows:comparison,criteria:["가격","규격","사용 상황","장점","한계","관리 방식"]},idempotencyKey:"comparison-v2",eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+        await storeTranscriptMessage(db,{trialId:trial.id,phase:"comparison",actorType:"agent",messageType:"comparison",content:summary,payload:{rows:comparison,criteria:["가격","예산 적합성","핵심 특징·목적","관심사·취향 연결","실용성","감성적 측면","다른 후보 대비 강점","선택 전 고려할 점","우선할 기준"]},idempotencyKey:"comparison-v2",eventOrigin:observing?stimulus.source_kind:"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
       } else {
         const eventActor=actor==="human"?"participant":actor;
         await saveEvent(context,"phase_entered","decision","system",{decisionAuthority:trial.decision_authority});

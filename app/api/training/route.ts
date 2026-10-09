@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logEvent } from "@/lib/events";
 import { participantSessionMatches } from "@/lib/auth/participant";
-import { EXPERIMENT } from "@/config/experiment";
+import { EXPERIMENT, MINIMUM_EXPOSURE_MS } from "@/config/experiment";
+import { validPracticeExposureMs, type PracticeExposureEvent } from "@/lib/experiment/practiceExposure";
 
 const practiceProductIds = ["10308385", "36995775", "864008591"];
 
@@ -10,6 +11,9 @@ const expected = [
   { comparison: "giver", decision: "giver" },
   { comparison: "agent", decision: "agent" },
 ] as const;
+
+const timedPracticePhases = ["criteria", "candidates", "comparison"] as const;
+type TimedPracticePhase = typeof timedPracticePhases[number];
 
 async function context(participantId: string) {
   if (!await participantSessionMatches(participantId)) throw new Error("SESSION_EXPIRED");
@@ -48,6 +52,44 @@ export async function POST(request: Request) {
   if(typeof input.participantId!=="string")return NextResponse.json({error:"참가자 정보가 필요합니다."},{status:400});
   try {
     const {db,participant}=await context(input.participantId);
+    if(input.action==="practice_exposure") {
+      const scenarioIndex=input.scenarioIndex;
+      const phase=input.phase as TimedPracticePhase;
+      const practiceRunId=input.practiceRunId;
+      const operation=input.operation;
+      if(![0,1].includes(scenarioIndex)||!timedPracticePhases.includes(phase)||typeof practiceRunId!=="string"||!/^[\w-]{8,80}$/.test(practiceRunId)||!["begin","heartbeat","gate","complete"].includes(operation))
+        return NextResponse.json({error:"연습 확인시간 요청이 올바르지 않습니다."},{status:400});
+      if(operation==="heartbeat"&&typeof input.active!=="boolean")
+        return NextResponse.json({error:"연습 화면 상태가 올바르지 않습니다."},{status:400});
+      const identity={training:true,practiceRunId,scenarioIndex,phase};
+      const {data:events,error:eventsError}=await db.from("event_logs")
+        .select("event_type,created_at,effective_exposure_ms,payload_json")
+        .eq("participant_id",participant.id)
+        .in("event_type",["practice_phase_started","practice_phase_heartbeat","practice_phase_threshold_met","practice_phase_completed"])
+        .contains("payload_json",identity)
+        .order("created_at",{ascending:true}).limit(3_000);
+      if(eventsError)throw eventsError;
+      const history=(events??[]) as PracticeExposureEvent[];
+      const hasStart=history.some(event=>event.event_type==="practice_phase_started");
+      const completed=history.some(event=>event.event_type==="practice_phase_completed");
+      if(operation==="begin") {
+        if(!hasStart)await logEvent({participantId:participant.id,eventType:"practice_phase_started",phase,payload:identity,actorType:"participant",eventOrigin:"participant"});
+        return NextResponse.json({ok:true,passed:completed});
+      }
+      if(!hasStart)return NextResponse.json({error:"연습 화면을 다시 열어 주세요."},{status:409});
+      if(operation==="heartbeat") {
+        if(!completed)await logEvent({participantId:participant.id,eventType:"practice_phase_heartbeat",phase,payload:{...identity,active:input.active},actorType:"participant",eventOrigin:"participant"});
+        return NextResponse.json({ok:true});
+      }
+      const minimumMs=MINIMUM_EXPOSURE_MS.practice[participant.role as "giver"|"recipient"];
+      const effectiveExposureMs=validPracticeExposureMs(history,Date.now());
+      if(effectiveExposureMs<minimumMs)return NextResponse.json({passed:false,effectiveExposureMs,remainingMs:minimumMs-effectiveExposureMs});
+      if(operation==="gate"&&!history.some(event=>event.event_type==="practice_phase_threshold_met"))
+        await logEvent({participantId:participant.id,eventType:"practice_phase_threshold_met",phase,payload:{...identity,effectiveExposureMs},effectiveExposureMs,actorType:"participant",eventOrigin:"participant"});
+      if(operation==="complete"&&!completed)
+        await logEvent({participantId:participant.id,eventType:"practice_phase_completed",phase,payload:{...identity,effectiveExposureMs},effectiveExposureMs,actorType:"participant",eventOrigin:"participant"});
+      return NextResponse.json({passed:true,effectiveExposureMs});
+    }
     if(input.action==="practice_event") {
       if(input.eventType==="practice_product_detail_opened") {
         if(![0,1].includes(input.scenarioIndex)||!practiceProductIds.includes(input.sourceProductId))
@@ -68,6 +110,13 @@ export async function POST(request: Request) {
     if(input.action==="check") {
       const index=input.scenarioIndex;
       if(![0,1].includes(index)||!["giver","agent"].includes(input.comparison)||!["giver","agent"].includes(input.decision))return NextResponse.json({error:"확인 응답을 선택해 주세요."},{status:400});
+      if(typeof input.practiceRunId!=="string"||!/^[\w-]{8,80}$/.test(input.practiceRunId))return NextResponse.json({error:"연습을 다시 시작해 주세요."},{status:400});
+      const {data:completedPhases,error:phaseError}=await db.from("event_logs")
+        .select("payload_json").eq("participant_id",participant.id).eq("event_type","practice_phase_completed")
+        .contains("payload_json",{training:true,practiceRunId:input.practiceRunId,scenarioIndex:index});
+      if(phaseError)throw phaseError;
+      if(!timedPracticePhases.every(phase=>(completedPhases??[]).some(event=>event.payload_json?.phase===phase)))
+        return NextResponse.json({error:"각 연습 화면의 최소 확인시간을 채워 주세요."},{status:409});
       const passed=input.comparison===expected[index].comparison&&input.decision===expected[index].decision;
       const {data:prior}=await db.from("training_practice_checks").select("attempts").eq("participant_id",participant.id).eq("scenario_index",index).maybeSingle();
       const {error}=await db.from("training_practice_checks").upsert({participant_id:participant.id,scenario_index:index,comparison_answer:input.comparison,decision_answer:input.decision,passed,attempts:(prior?.attempts??0)+1,updated_at:new Date().toISOString()},{onConflict:"participant_id,scenario_index"});

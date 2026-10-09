@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EXPERIMENT } from "@/config/experiment";
 import { productSummaryKo } from "@/lib/catalog/productSummaryKo";
+import { buildProductRecommendation, type ProductEvidenceContext } from "@/lib/catalog/productEvidence";
+import { buildComparison } from "@/lib/experiment/transcript";
 import { normalizeCriteria, participantCriterionText, RECOMMENDATION_CRITERIA, toggleCriterion } from "@/lib/experiment/criteria";
+import { relationshipForParticipant } from "@/lib/experiment/relationship";
 
 type Role = "giver" | "recipient";
 type Phase = "criteria" | "candidates" | "comparison" | "decision" | "awaiting_survey" | "completed";
@@ -52,17 +55,18 @@ function waitForImageDecode(image:HTMLImageElement) {
   });
 }
 
-function CandidateCard({ candidate, selected = false, onSelect, onToggle }: {
-  candidate: Row; selected?: boolean; onSelect?: () => void; onToggle?: () => void;
+function CandidateCard({ candidate, allCandidates, evidenceContext, selected = false, onSelect, onToggle }: {
+  candidate: Row; allCandidates: Row[]; evidenceContext:ProductEvidenceContext; selected?: boolean; onSelect?: () => void; onToggle?: () => void;
 }) {
   const p = productFor(candidate);
+  const recommendation=buildProductRecommendation(candidate,allCandidates,evidenceContext);
   return <article className={"experiment-candidate" + (selected ? " is-selected" : "")}>
     <div className="experiment-candidate-summary"><span className="experiment-candidate-label">후보 {labelFor(candidate.display_order)}</span><strong className="experiment-price">{Number(p.price ?? 0).toLocaleString()}원</strong></div>
     <div className="experiment-product-head">
       <img className="experiment-product-image" data-exposure-phase="candidates" src={p.image_url || "/products/category-illustration.svg"} alt="제품 종류를 나타내는 예시 이미지" loading="eager" onError={e => { const image=e.currentTarget;const fallback="/products/category-illustration.svg";if(image.getAttribute("src")!==fallback)image.src=fallback;else image.dataset.imageFailed="true"; }} />
       <div><h3>{p.product_name ?? "상품 정보"}</h3><ul className="experiment-product-summary">{productSummaryKo(p.source_product_id).map((fact,index)=><li key={index}>{fact}</li>)}</ul></div>
     </div>
-    {p.fit_reason && <p className="experiment-fit"><b>추천 이유</b> · {p.fit_reason}</p>}
+    <section className="experiment-fit" aria-label="추천 이유"><h4>추천 이유</h4><p><strong>{recommendation.headline}</strong></p><ul><li><b>수혜자와의 연결</b> · {recommendation.recipientConnection}</li><li><b>상품 근거</b> · {recommendation.productEvidence}</li><li><b>비교상 강점</b> · {recommendation.comparativeStrength}</li><li><b>고려할 점</b> · {recommendation.consideration}</li></ul></section>
     {onToggle && <button type="button" className="button secondary" onClick={onToggle}>상세 보기</button>}
     {onSelect && <button type="button" className={selected ? "button" : "button secondary"} onClick={onSelect}>{selected ? "최종 후보로 선택됨" : "이 선물을 선택"}</button>}
   </article>;
@@ -96,8 +100,17 @@ function CandidateDetail({ candidate, onClose }: { candidate: Row; onClose: () =
 
 function ComparisonTable({ rows }: { rows: Row[] }) {
   if (!rows?.length) return <p className="body">비교 정보를 준비하고 있습니다.</p>;
-  const fields: [string,string][] = [["product_name","상품"],["price","가격"],["configuration","규격·구성"],["use_case","사용 상황"],["strengths","장점"],["limitations","살펴볼 점"],["care_requirements","관리 방식"]];
+  const fields: [string,string][] = [["price","가격"],["budget_fit","예산 적합성"],["core_features","핵심 특징·목적"],["recipient_fit","관심사·취향 연결"],["practicality","실용성"],["emotional_meaning","감성적 측면"],["comparative_strength","다른 후보 대비 강점"],["consideration","선택 전 고려할 점"],["best_for","우선할 기준"]];
   return <div className="experiment-table-wrap"><table className="experiment-table"><colgroup><col className="experiment-table-label-col"/>{rows.map((row:Row)=><col key={row.label}/>)}</colgroup><thead><tr><th>비교 항목</th>{rows.map((row:Row)=><th key={row.label}>{row.label} · {row.product_name}</th>)}</tr></thead><tbody>{fields.map(([key,title])=><tr key={key}><th>{title}</th>{rows.map((row:Row)=><td key={row.label}>{key === "price" ? Number(row[key] ?? 0).toLocaleString()+"원" : row[key] ?? "정보 없음"}</td>)}</tr>)}</tbody></table></div>;
+}
+
+function instructionForPhase(phase:Phase,role:Role,guided:boolean,humanDecision:boolean){
+  if(phase==="criteria")return role==="recipient"?"선물 기준을 정하는 과정을 관찰해 주세요.":guided?"기준을 입력하고 후보 구성을 요청해 주세요.":"Agent가 제공된 기준으로 후보를 구성합니다.";
+  if(phase==="candidates")return role==="recipient"?"세 후보가 제시되는 과정을 관찰해 주세요.":guided?"세 후보를 확인하고 비교를 요청해 주세요.":"세 후보를 확인해 주세요.";
+  if(phase==="comparison")return "세 후보의 차이를 살펴봐 주세요.";
+  if(phase==="decision")return role==="giver"&&humanDecision?"선물 하나를 선택해 주세요.":"최종 선택 결과를 확인해 주세요.";
+  if(phase==="awaiting_survey")return "종이 설문을 마친 뒤 완료를 확인해 주세요.";
+  return "참여가 완료되었습니다.";
 }
 
 export function Experiment({ role }: { role: Role }) {
@@ -191,7 +204,7 @@ export function Experiment({ role }: { role: Role }) {
     const panel=transcriptScrollRef.current;
     if(!panel||!visible)return;
     if(phaseChanged&&count>0){transcriptAtBottomRef.current=true;requestAnimationFrame(()=>panel.scrollTo({top:panel.scrollHeight}));}
-    else if(previous.trialId===trial.id&&count>previous.count&&transcriptAtBottomRef.current){requestAnimationFrame(()=>panel.scrollTo({top:panel.scrollHeight,behavior:"smooth"}));}
+    else if(previous.trialId===trial.id&&count>previous.count&&transcriptAtBottomRef.current){requestAnimationFrame(()=>{panel.scrollTop=panel.scrollHeight;});}
   },[trial?.id,phase,shownMessages.length,visible]);
   useEffect(()=>{setSelectedCategory(searchState?.selected_category??"");setSelectedPriorities(normalizeCriteria(searchState?.selection_priorities??[]));setSelectedTags(searchState?.preference_tags??[]);},[trial?.id,searchState?.state_version]);
 
@@ -508,7 +521,6 @@ export function Experiment({ role }: { role: Role }) {
 
   const profile=trial.recipient_profiles ?? {};
   const exposurePercent=Math.min(100,visibleExposureMs/EXPERIMENT.minimumPhaseExposureMs*100);
-  const remainingExposureSeconds=Math.max(0,Math.ceil((EXPERIMENT.minimumPhaseExposureMs-visibleExposureMs)/1000));
   const allGuidedAnswers=EXPERIMENT.questions.every(q=>Boolean(answers[q.id]));
   const canRequest=ready && visible && exposureMs>=EXPERIMENT.minimumPhaseExposureMs && !busy;
   const taskOwner=guided?"선물 주는 사람":"Agent";
@@ -529,12 +541,21 @@ export function Experiment({ role }: { role: Role }) {
   const requestedResultTab=resultTabState?.phase===phase?resultTabState.tab:defaultResultTab;
   const resultTab=availableResultTabs[requestedResultTab]?requestedResultTab:defaultResultTab;
   const canReviewOtherResults=!hasExposureClock||exposureMs>=EXPERIMENT.minimumPhaseExposureMs;
+  const relationship=data.relationship??relationshipForParticipant(data.participant?.intimacy_condition,data.participant?.role);
+  const currentInstruction=instructionForPhase(phase,role,guided,humanDecision);
+  const observedPriority=shownMessages.find((message:Row)=>message.payload?.selectedPriority)?.payload?.selectedPriority;
+  const evidenceContext:ProductEvidenceContext={
+    profile,budget:Number(profile.gift_budget??0),intimacyCondition:relationship.intimacyCondition,
+    priorities:role==="recipient"?normalizeCriteria(typeof observedPriority==="string"?[observedPriority]:[]):normalizeCriteria(searchState?.selection_priorities??[]),
+  };
+  const comparisonRows=comparisonMessage?.payload?.rows?.[0]?.budget_fit
+    ?comparisonMessage.payload.rows:comparisonMessage?buildComparison(candidates,evidenceContext):[];
+  const latestAgentMessageId=[...shownMessages].reverse().find((message:Row)=>message.actor_type==="agent")?.id;
 
   return <main className={`experiment-shell role-${role} phase-${phase}${hasExposureClock?" has-exposure-clock":""}`}>
     <header className="experiment-header">
-      <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>선물 추천 Agent</span><span className="experiment-brand-role">{role==="giver"?"선물 주는 사람":"선물 받는 사람"}</span></div>
-      <p className="experiment-trial-counter">선물 선택 {trial.trial_number} / 4 · {role==="giver"?"직접 참여":"과정 관찰"}</p>
-      <h1 className="title">{phaseTitles[phase] ?? "선물 추천 연구"}</h1>
+      <div className="experiment-brand"><span className="experiment-brand-mark" aria-hidden="true">✦</span><span>선물 추천 Agent</span><span className="experiment-brand-role">본 실험 · {role==="giver"?"선물 주는 사람":"선물 받는 사람"} · {trial.trial_number} / 4</span></div>
+      <div className="experiment-header-summary"><div><h1 className="title">{phaseTitles[phase] ?? "선물 추천 연구"}</h1><p className="experiment-current-task">{currentInstruction}</p></div><div className="experiment-header-time" aria-label="현재 단계 최소 확인시간" role="status">{hasExposureClock?<><b>확인시간</b><strong>{!ready?"준비 중":!visible?"화면 이탈 · 시간 중지":exposureMs>=EXPERIMENT.minimumPhaseExposureMs?"최소 확인시간 충족":`${Math.floor(visibleExposureMs/1000)} / ${EXPERIMENT.minimumPhaseExposureMs/1000}초`}</strong><div className="experiment-header-progress" role="progressbar" aria-label="현재 단계 확인 시간 진행률" aria-valuemin={0} aria-valuemax={EXPERIMENT.minimumPhaseExposureMs/1000} aria-valuenow={Math.min(EXPERIMENT.minimumPhaseExposureMs/1000,Math.floor(visibleExposureMs/1000))}><span style={{width:String(exposurePercent)+"%"}}/></div></>:<><b>현재 단계</b><strong>{phaseTitles[phase]}</strong></>}</div></div>
       <div className="experiment-roles"><span>후보 구성·비교 · <b>{guided?"선물 주는 사람이 요청":"Agent가 자동 진행"}</b></span><span>최종 선택 · <b>{decisionOwner}</b></span></div>
       <ol className="experiment-phase-step" aria-label="선물 선택 진행 단계">{progressStages.map((stage,index)=><li key={stage.id} className={index===stageIndex?"is-active":index<stageIndex||stageIndex<0?"is-complete":""} aria-current={index===stageIndex?"step":undefined}><span>{index+1}</span>{!guided&&stage.id==="criteria"?"정보 확인":stage.label}</li>)}</ol>
     </header>
@@ -544,12 +565,10 @@ export function Experiment({ role }: { role: Role }) {
     <div className="experiment-main-grid">
     <aside className="experiment-context">
     <section className="experiment-profile card" aria-label="선물 받는 사람 정보">
-      <p className="eyebrow">선물 받는 사람 정보</p>
-      <div className="experiment-profile-meta"><div><h2>{profile.name ?? profile.profile_code}</h2><p className="body">{profile.age}세 · {profile.occupation} · {profile.gift_occasion}</p></div><span className="experiment-budget">예산 {Number(profile.gift_budget ?? 0).toLocaleString()}원</span></div>
-      <p className="body"><b>관심사</b> · {(profile.hobbies ?? []).join(" · ")}</p>
-      <div className="experiment-profile-details"><p className="body">{profile.recent_interest}</p><p className="body">{profile.preference}</p><p className="body">{profile.dislike}</p></div>
-      <div className="experiment-profile-criteria"><p className="eyebrow">선택된 추천 기준</p><p className="body">저장됨 · {normalizeCriteria(searchState?.selection_priorities??[]).join(" · ")||"없음"}</p>{role==="giver"&&phase==="criteria"&&selectedPriorities.join("|")!==normalizeCriteria(searchState?.selection_priorities??[]).join("|")&&<p className="body">입력 중 · {selectedPriorities.join(" · ")||"선택 해제"}</p>}{searchState?.selected_category&&<p className="body">카테고리 · {searchState.selected_category}</p>}{searchState?.query_text&&<p className="body">직접 입력 · {participantFacingText(searchState.query_text)}</p>}</div>
-      <details className="experiment-profile-more"><summary>선물 받는 사람 상세 정보</summary><div className="experiment-profile-more-content"><p className="body">{profile.recent_interest}</p><p className="body">{profile.preference}</p><p className="body">{profile.dislike}</p></div></details>
+      <div className="experiment-profile-meta"><div><p className="eyebrow">선물 받는 사람</p><h2>{profile.name ?? profile.profile_code}</h2><p className="body">{profile.age}세 · {profile.occupation} · {profile.gift_occasion}</p></div><span className="experiment-budget">예산 {Number(profile.gift_budget ?? 0).toLocaleString()}원</span></div>
+      <div className="experiment-relationship"><p className="eyebrow">{relationship.heading}</p><strong>{relationship.conditionLabel}</strong>{relationship.relationshipType&&<p className="body">관계 유형 · {relationship.relationshipType}</p>}{relationship.situation&&<p className="body">{relationship.situation}</p>}</div>
+      <div className="experiment-profile-core"><p className="body"><b>관심사</b> · {(profile.hobbies ?? []).join(" · ")}</p><p className="body"><b>선호</b> · {profile.preference}</p><p className="body"><b>피할 조건</b> · {profile.dislike}</p><div className="experiment-profile-criteria"><p className="eyebrow">선택된 추천 기준</p><p className="body">{normalizeCriteria(searchState?.selection_priorities??[]).join(" · ")||"없음"}{searchState?.selected_category?` · ${searchState.selected_category}`:""}</p>{role==="giver"&&phase==="criteria"&&selectedPriorities.join("|")!==normalizeCriteria(searchState?.selection_priorities??[]).join("|")&&<p className="body">입력 중 · {selectedPriorities.join(" · ")||"선택 해제"}</p>}</div></div>
+      <details className="experiment-profile-more"><summary>선물 받는 사람 상세 정보</summary><div className="experiment-profile-more-content"><p className="body">{profile.recent_interest}</p><p className="body">{profile.lifestyle_context}</p>{searchState?.query_text&&<p className="body">직접 입력 · {participantFacingText(searchState.query_text)}</p>}</div></details>
     </section>
 
     {role==="giver"&&data?.aiConfigured===false&&<p className="experiment-error" role="status">Agent 대화 설정이 완료되지 않았습니다. 연구자가 Vercel Production의 ANTHROPIC_API_KEY를 확인하고 새 배포를 해야 합니다.</p>}
@@ -562,7 +581,7 @@ export function Experiment({ role }: { role: Role }) {
       {shownMessages.map((message:Row)=>{
         const agent=message.actor_type==="agent"||message.actor_type==="system";
         const speaker=message.simulated_actor_event||message.actor_type==="simulated_giver"?`선물 주는 사람(${data?.stimulusSource==="recorded"?"기록 재생":"연구 시나리오"})`:agent?"Agent":"선물 주는 사람";
-        return <article key={message.id} className={"experiment-message "+(agent?"from-agent":"from-person")}>
+        return <article key={message.id} className={"experiment-message "+(agent?"from-agent":"from-person")+(message.id===latestAgentMessageId?" is-latest-agent":"")}>
           <div className="experiment-message-bubble">
           <p className="experiment-speaker">{speaker}{message.simulated_actor_event&&<span> · 시나리오 재생</span>}</p>
           {message.content && <p className="body">{participantFacingText(message.content)}</p>}
@@ -589,18 +608,17 @@ export function Experiment({ role }: { role: Role }) {
         {(["candidates","comparison","decision"] as const).map(tab=><button key={tab} type="button" role="tab" aria-selected={resultTab===tab} className={resultTab===tab?"is-active":""} disabled={!availableResultTabs[tab]||(tab!==defaultResultTab&&!canReviewOtherResults)} onClick={()=>setResultTabState({phase,tab})}>{tab==="candidates"?"후보 3개":tab==="comparison"?"비교표":"선택 결과"}</button>)}
       </div></div>
       <div key={`${trial.id}:${phase}:${resultTab}`} className="experiment-results-body" role="tabpanel">
-        {resultTab==="candidates"&&(availableResultTabs.candidates?<div className="experiment-card-list">{candidates.map(candidate=><CandidateCard key={candidate.id} candidate={candidate} onToggle={()=>void toggleCandidate(candidate)}/>)}</div>:<div className="experiment-results-empty"><h3>상품 후보를 준비하고 있습니다</h3><p className="body">추천 기준이 확인되면 후보 3개가 이곳에 표시됩니다.</p></div>)}
-        {resultTab==="comparison"&&(comparisonMessage?<div data-exposure-phase="comparison"><ComparisonTable rows={comparisonMessage.payload?.rows??[]}/></div>:<div className="experiment-results-empty"><h3>비교 결과를 준비하고 있습니다</h3></div>)}
+        {resultTab==="candidates"&&(availableResultTabs.candidates?<div className="experiment-card-list">{candidates.map(candidate=><CandidateCard key={candidate.id} candidate={candidate} allCandidates={candidates} evidenceContext={evidenceContext} onToggle={()=>void toggleCandidate(candidate)}/>)}</div>:<div className="experiment-results-empty"><h3>상품 후보를 준비하고 있습니다</h3><p className="body">추천 기준이 확인되면 후보 3개가 이곳에 표시됩니다.</p></div>)}
+        {resultTab==="comparison"&&(comparisonMessage?<div data-exposure-phase="comparison"><ComparisonTable rows={comparisonRows}/></div>:<div className="experiment-results-empty"><h3>비교 결과를 준비하고 있습니다</h3></div>)}
         {resultTab==="decision"&&<div className="experiment-decision-result">
-          {role==="giver"&&phase==="decision"&&humanDecision&&!finalCandidate&&<><p className="body">세 후보를 살펴본 뒤 최종 선물 하나를 선택해 주세요.</p><div className="experiment-card-list">{candidates.map(candidate=><CandidateCard key={candidate.id} candidate={candidate} selected={selectedId===candidate.gift_candidate_id} onSelect={()=>void choose(candidate)} onToggle={()=>void toggleCandidate(candidate)}/>)}</div></>}
-          {finalCandidate&&decisionVisible&&<><p className="eyebrow">{humanDecision?"선물 주는 사람이 선택한 최종 선물":"Agent가 선택한 최종 선물"}</p><div className="experiment-final-product"><CandidateCard candidate={finalCandidate} selected onToggle={()=>void toggleCandidate(finalCandidate)}/></div>{recordedDecisionExplanation?.content&&<div className="experiment-decision-explanation"><h3>선택 과정 기록</h3><p>{participantFacingText(recordedDecisionExplanation.content)}</p></div>}</>}
+          {role==="giver"&&phase==="decision"&&humanDecision&&!finalCandidate&&<><p className="body">세 후보를 살펴본 뒤 최종 선물 하나를 선택해 주세요.</p><div className="experiment-card-list">{candidates.map(candidate=><CandidateCard key={candidate.id} candidate={candidate} allCandidates={candidates} evidenceContext={evidenceContext} selected={selectedId===candidate.gift_candidate_id} onSelect={()=>void choose(candidate)} onToggle={()=>void toggleCandidate(candidate)}/>)}</div></>}
+          {finalCandidate&&decisionVisible&&<><p className="eyebrow">{humanDecision?"선물 주는 사람이 선택한 최종 선물":"Agent가 선택한 최종 선물"}</p><div className="experiment-final-product"><CandidateCard candidate={finalCandidate} allCandidates={candidates} evidenceContext={evidenceContext} selected onToggle={()=>void toggleCandidate(finalCandidate)}/></div>{recordedDecisionExplanation?.content&&<div className="experiment-decision-explanation"><h3>선택 과정 기록</h3><p>{participantFacingText(recordedDecisionExplanation.content)}</p></div>}</>}
           {!finalCandidate&&!(role==="giver"&&phase==="decision"&&humanDecision)&&<div className="experiment-results-empty"><h3>최종 선택을 기다리고 있습니다</h3><p className="body">선택 결과는 이곳에 표시됩니다.</p></div>}
         </div>}
       </div>
     </aside>
     </div>
-    <footer className="experiment-footer" aria-label="확인 시간과 단계 진행">
-      {hasExposureClock&&<section className="experiment-clock card" aria-label="현재 단계 확인 시간"><div className="experiment-clock-line"><b>{phase==="criteria"?"정보":phase==="candidates"?"후보":"비교"} 확인 시간</b><strong className="experiment-clock-count">{!ready?"준비 중":exposureMs>=EXPERIMENT.minimumPhaseExposureMs?"확인 완료":`${remainingExposureSeconds}초 남음`}</strong></div><div className="experiment-progress" role="progressbar" aria-label="현재 단계 확인 시간 진행률" aria-valuemin={0} aria-valuemax={EXPERIMENT.minimumPhaseExposureMs/1000} aria-valuenow={Math.min(EXPERIMENT.minimumPhaseExposureMs/1000,Math.floor(visibleExposureMs/1000))}><span style={{width:String(exposurePercent)+"%"}}/></div><p className="eyebrow">{!visible?"화면을 벗어나 시간이 멈췄습니다.":!ready?"내용을 준비하고 있습니다.":exposureMs<EXPERIMENT.minimumPhaseExposureMs?`${Math.floor(visibleExposureMs/1000)} / ${EXPERIMENT.minimumPhaseExposureMs/1000}초 · 내용을 살펴봐 주세요.`:"최소 확인 시간이 충족되었습니다."}</p></section>}
+    <footer className="experiment-footer" aria-label="단계 진행">
       <section className="experiment-footer-action" aria-label="현재 단계 안내와 진행">
         {role==="recipient"&&!recipientStarted&&<><div><b>관찰을 시작합니다</b><p>{data?.stimulusSource==="recorded"?"기록된 대화를 검토해 만든 관찰 자극입니다.":"연구자가 구성하고 검토한 시나리오입니다."} 화면 속 선물 주는 사람의 입력은 당신의 행동으로 기록되지 않습니다.</p></div><button className="button" onClick={startObservation}>관찰 시작</button></>}
         {role==="giver"&&phase==="criteria"&&guided&&<><div><b>기준을 입력한 뒤 후보 구성을 요청해 주세요</b>{!criteriaFilled&&<p>대화에서 기준을 전송하거나 선택 메뉴에서 적용해 주세요.</p>}</div><button className="button" disabled={!canRequest||!criteriaFilled||!catalogReady} onClick={()=>void advance(true)}>{busy?"후보 준비 중…":"이 기준으로 후보를 찾아주세요"}</button></>}
