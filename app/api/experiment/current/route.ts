@@ -14,9 +14,13 @@ export async function GET(request: Request) {
     if (error) throw error;
     const profile = profileFor(trial.profile_code);
     if (!profile) throw new Error("PROFILE_MISSING");
-    const currentMessages = role === "recipient" ? visibleRecipientMessages(messages ?? [],trial) : messages ?? [];
+    const currentMessages = role === "recipient" ? (messages ?? []).filter((message: any) => {
+      const owner = visible.find((item: any) => item.id === message.trial_id);
+      return owner && visibleRecipientMessages([message], owner).length === 1;
+    }) : messages ?? [];
     const safeTrial = role === "recipient" ? visibleRecipientTrial(trial,currentMessages) : trial;
-    const safeTrials = visible.map((item: any) => item.id === trial.id ? safeTrial : item);
+    const safeTrials = visible.map((item: any) => item.id === trial.id ? safeTrial
+      : role === "recipient" ? visibleRecipientTrial(item,currentMessages) : item);
     return NextResponse.json({
       person: { id: person.id, enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
         conditionOrder: person.condition_order, enrollmentBlock: person.enrollment_block, currentRole: person.active_role },

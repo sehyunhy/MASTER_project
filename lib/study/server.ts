@@ -26,7 +26,7 @@ export async function trialFor(db: any, personId: string, role: string, trialId?
     .eq("person_id", personId).eq("role", role).order("order_position");
   if (error) throw error;
   const trials = data ?? [];
-  const trial = trials.find((item: any) => item.phase !== "complete") ?? trials[trials.length - 1];
+  const trial = trials.find((item: any) => !["complete", "skipped"].includes(item.phase)) ?? trials[trials.length - 1];
   if (!trial || (trialId && trial.id !== trialId)) throw new Error("TRIAL_LOCKED");
   return { trial, trials };
 }

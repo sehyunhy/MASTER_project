@@ -10,7 +10,8 @@ type Trial = { id: string; role: Role; condition: "A"|"B"|"C"|"D"; order_positio
   candidate_snapshots: Product[]; candidates_visible_at?: string | null;
   proposal?: { request_key: string; product: Product; reply: string } | null;
   final_product_id?: string | null; final_actor?: string | null; final_reason?: string | null; stimulus_id?: string | null;
-  survey_completed_at?: string | null; operator_review_needed?: boolean };
+  survey_completed_at?: string | null; operator_review_needed?: boolean;
+  timeout_phase?: string | null; skipped_at?: string | null };
 type Message = { id: number; trial_id: string; phase: string; speaker: string; origin: string; kind: string;
   content: string; payload: Record<string, any> };
 type State = { person: { enrollmentNumber: number; currentRole: string };
@@ -90,7 +91,7 @@ export function Experiment({ role }: { role: Role }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "다시 시도해 주세요.");
       if (type==="activate" && !result.accepted) throw new Error("전환 코드가 맞지 않습니다. 연구자에게 확인해 주세요.");
-      if (type==="survey" && result.role_complete) {
+      if ((type==="survey" || type==="skipTimeout") && result.role_complete) {
         window.location.assign("/complete");
         return;
       }
@@ -112,7 +113,7 @@ export function Experiment({ role }: { role: Role }) {
         body:JSON.stringify({role,trialId:state.trial.id,task,key,request}) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Agent 작업을 완료하지 못했습니다.");
-      if (task==="one") { setDraft(""); draftStarted.current=false; }
+      if (task==="one" && !result.clarification) { setDraft(""); draftStarted.current=false; }
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "오류가 발생했습니다."); }
     finally { setBusy(false); }
@@ -192,6 +193,7 @@ export function Experiment({ role }: { role: Role }) {
         const result=await response.json();
         if (!stopped && response.ok) {
           setSeconds(Math.floor(result.effective_ms/1000));
+          if (result.phase==="timeout") setError("");
           if (result.phase==="timeout" || role==="recipient") await refresh();
         }
       } catch {}
@@ -270,7 +272,7 @@ export function Experiment({ role }: { role: Role }) {
   const shownMessages=state?.messages.filter(message => {
     const owner=visibleTrials.find(item=>item.id===message.trial_id);
     if (!owner) return false;
-    if (owner.id!==trial?.id || role!=="recipient" || owner.phase==="complete") return true;
+    if (owner.id!==trial?.id || role!=="recipient" || ["complete","skipped"].includes(owner.phase)) return true;
     if (message.phase==="candidates" && trial.phase!=="locked") return true;
     if (message.phase==="decision" && trial.phase==="candidates") return false;
     const offset=Number(message.payload?.offset_ms??0);
@@ -289,7 +291,7 @@ export function Experiment({ role }: { role: Role }) {
   },[shownMessages,trial?.id,role]);
   const currentCount=trial?.candidate_snapshots.length ?? 0;
   const phaseTitle=trial?.phase==="candidates"?"1단계 · 후보 만들기":trial?.phase==="decision"?"2단계 · 최종 선택":
-    trial?.phase==="survey"?"조건 설문":trial?.phase==="timeout"?"운영자 확인 필요":"조건 전환";
+    trial?.phase==="survey"?"조건 설문":trial?.phase==="timeout"?"시간 초과 · 미완료 기록":"조건 전환";
   const remaining=Math.max(0,180-seconds);
   const minReady=seconds>=60;
   const selectedProduct=trial?.candidate_snapshots.find(product=>product.source_product_id===trial.final_product_id);
@@ -299,7 +301,7 @@ export function Experiment({ role }: { role: Role }) {
       <p>{role==="giver"?"선물 주는 사람 · P01":"선물 받는 사람 · P02"} · 참가자 #{state?.person.enrollmentNumber??"…"}</p>
       <section><h2>진행 안내</h2><p>종이 자료 {trial?.profile_code??"…"} · {state?.profile.name??"…"}</p><p>{role==="giver"?"종이로 받은 선물 대상 자료를 읽어 주세요. 상품 후보와 Agent 대화는 오른쪽 화면에서 진행합니다.":"연구자가 구성하고 검토한 선물 선택 과정을 관찰합니다. 화면 속 선물 주는 사람의 행동은 당신의 행동으로 기록되지 않습니다."}</p></section>
       <section><h2>현재 조건</h2><strong>{trial?.condition??"…"} · {trial ? conditionLabel[trial.condition] : ""}</strong><p>{trial?.order_position??"…"} / 4조건</p></section>
-      <section><h2>시간 규칙</h2><p>후보와 최종 단계 각각 유효 노출 60–180초. 탭을 벗어나거나 연결이 끊기면 시간이 멈춥니다.</p></section>
+      <section><h2>시간 규칙</h2><p>한 조건의 후보 3개는 하나의 후보 단계에서 만듭니다. 후보 한 개마다 시간이 새로 시작하지 않습니다. 후보 단계와 최종 단계에 각각 유효 노출 60–180초를 적용합니다. 시간초과 시 미완료로 기록하고 다음 조건으로 진행할 수 있습니다.</p></section>
       <a href="/start">친구 화면으로</a>
     </aside>
     <div className="study-chat-phone">
@@ -307,7 +309,7 @@ export function Experiment({ role }: { role: Role }) {
         <header className="study-chat-header">
           <div className="study-chat-status"><span>11:03</span><span>▥ ● ▰</span></div>
           <div className="study-chat-heading"><span aria-hidden="true">🎁</span><div><strong>선물 상담</strong><small>{trial?.condition??"…"} · {phaseTitle}</small></div></div>
-          {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{!isVisible?"일시정지":minReady?"최소 확인 완료":`${60-seconds}초 후 다음 단계 가능`}</span><strong>{remaining}초 남음</strong><div><i style={{width:`${Math.min(100,seconds/180*100)}%`}} /></div></div>}
+          {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{trial.phase==="candidates"?"후보 3개 전체 단계":"최종 선택 단계"} · {!isVisible?"일시정지":minReady?"최소 확인 완료":`${60-seconds}초 후 다음 단계 가능`}</span><strong>{remaining}초 남음</strong><div><i style={{width:`${Math.min(100,seconds/180*100)}%`}} /></div></div>}
         </header>
         <div className="study-chat-scroll">
           {!state && <p className="study-chat-notice">연구 상태를 불러오는 중입니다.</p>}
@@ -327,10 +329,10 @@ export function Experiment({ role }: { role: Role }) {
                 <h3>후보 {Math.min(3,currentCount+1)} / 3</h3>
                 {item.proposal ? <><p>제안된 상품을 확인하고 확정하거나, 요청을 다듬어 다시 물어보세요.</p><div className="study-product-grid"><ProductCard product={item.proposal.product} onOpen={openProduct}
                   action={{label:"이 상품을 후보로 확정",run:()=>void action("confirmCandidate",{requestKey:item.proposal!.request_key})}} disabled={busy} /></div></>
-                : currentCount<3 ? <p>종이 프로필의 구체적인 관심사와 이번 후보의 방향을 직접 적어 주세요.</p> : <p>후보 세 개를 확정했습니다.</p>}
+                : currentCount<3 ? <p>이번 후보에서 찾고 싶은 상품이나 사용 상황을 자유롭게 적어 주세요.</p> : <p>후보 세 개를 확정했습니다.</p>}
                 {currentCount<3 && <form onSubmit={e=>{e.preventDefault();void submitPrompt();}}>
                   <textarea aria-label="이번 후보에 대한 요청" value={draft} onChange={e=>onDraft(e.target.value)}
-                    placeholder="예: 커피를 즐기는 사람에게 공간을 적게 차지하며 오래 쓸 선물을 찾아 주세요." />
+                    placeholder="찾고 싶은 상품이나 사용 상황을 자유롭게 적어 주세요." />
                   <button type="submit" disabled={busy||!draft.trim()}>후보 한 개 요청</button></form>}
               </div>}
               {role==="giver" && item.candidate_builder==="agent" && currentCount===0 && <div className="study-chat-control">
@@ -339,8 +341,8 @@ export function Experiment({ role }: { role: Role }) {
               {role==="giver" && item.candidate_builder==="human" && currentCount===3 &&
                 <div className="study-chat-control"><div className="study-product-grid">{item.candidate_snapshots.map(product=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div></div>}
             </>}
-            {(item.phase!=="locked"&&item.phase!=="candidates") && <div className="study-chat-divider is-phase">2단계 · 최종 선택</div>}
-            {(item.phase!=="locked"&&item.phase!=="candidates") && <div className="study-chat-control">
+            {(["decision","survey","complete"].includes(item.phase) || ["timeout","skipped"].includes(item.phase) && item.timeout_phase==="decision") && <div className="study-chat-divider is-phase">2단계 · 최종 선택</div>}
+            {item.candidate_snapshots.length===3 && (["decision","survey","complete"].includes(item.phase) || ["timeout","skipped"].includes(item.phase) && item.timeout_phase==="decision") && <div className="study-chat-control">
               <h3>세 후보 비교</h3><div className="study-comparison-scroll"><table className="study-comparison">
                 <thead><tr><th>확인 항목</th>{item.candidate_snapshots.map(product=><th key={product.source_product_id}>{product.name_ko}</th>)}</tr></thead>
                 <tbody><tr><th>연구용 가격</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{Number(product.price_krw).toLocaleString()}원</td>)}</tr>
@@ -367,6 +369,7 @@ export function Experiment({ role }: { role: Role }) {
               <div className="study-chat-control"><p>Agent가 현재 세 후보 중 하나를 추천·확정합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"final"});void agentTask("final");}}>Agent 결과 다시 시도</button></div>}
             {item.final_product_id && <div className="study-chat-control study-final-card"><h3>{item.final_actor==="agent"?"Agent가 선택한 최종 선물":"선물 주는 사람이 선택한 최종 선물"}</h3><strong>{item.candidate_snapshots.find(p=>p.source_product_id===item.final_product_id)?.name_ko}</strong><p>{item.final_reason}</p></div>}
             {item.phase==="complete" && <div className="study-chat-divider">조건 {item.condition} 완료</div>}
+            {item.phase==="skipped" && <div className="study-chat-divider">조건 {item.condition} · 시간초과로 미완료</div>}
           </div>)}
           <div ref={chatEnd} />
         </div>
@@ -375,13 +378,14 @@ export function Experiment({ role }: { role: Role }) {
           {trial?.phase==="locked" && <div className="study-footer-task"><label>연구자에게 받은 전환 코드
             <input type="password" inputMode="numeric" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)} placeholder="코드 입력" /></label>
             <button disabled={busy||!code} onClick={()=>void action("activate",{code})}>조건 {trial.condition} 시작</button></div>}
-          {trial?.phase==="candidates" && <div className="study-footer-task"><span>후보 {currentCount}/3 · 유효 {seconds}/60초 이상</span>
+          {trial?.phase==="candidates" && <div className="study-footer-task"><span>후보 {currentCount}/3 · 전체 후보 단계 유효 {seconds}/60초 이상</span>
             <button disabled={busy||!minReady||currentCount!==3} onClick={()=>void action("advance")}>최종 단계로 이동</button></div>}
           {trial?.phase==="decision" && <div className="study-footer-task"><span>결과 확인 · 유효 {seconds}/60초 이상</span>
             <button disabled={busy||!minReady||!trial.final_product_id} onClick={()=>void action("advance")}>종이 설문으로 이동</button></div>}
           {trial?.phase==="survey" && <div className="study-footer-task"><span>종이 설문을 작성한 뒤 연구자에게 제출해 주세요.</span>
             <button disabled={busy} onClick={()=>void action("survey")}>종이 설문 완료 확인</button></div>}
-          {trial?.phase==="timeout" && <div className="study-footer-task"><strong>시간 초과 · 연구자 확인 필요</strong><span>완료되지 않은 선택을 Agent가 대신하지 않습니다.</span></div>}
+          {trial?.phase==="timeout" && <div className="study-footer-task"><strong>시간 초과 · 미완료</strong><span>현재까지의 요청과 상품은 저장됩니다. 비어 있는 선택은 그대로 남기고 다음 조건으로 진행할 수 있습니다.</span>
+            <button disabled={busy} onClick={()=>void action("skipTimeout")}>미완료로 기록하고 다음 조건</button></div>}
           {trial?.phase==="complete" && <p>이 역할을 마쳤습니다. 연구자에게 알려 주세요.</p>}
           <button className="study-withdraw" onClick={()=>void action("withdraw")}>연구 참여 중단</button>
         </footer>

@@ -20,7 +20,7 @@ export function visibleRecipientMessages<T extends PlaybackMessage>(messages: T[
     if (message.trial_id !== trial.id) return true;
     if (trial.phase === "locked") return false;
     if (["survey", "complete"].includes(trial.phase)) return true;
-    const phase = trial.phase === "timeout" ? trial.timeout_phase : trial.phase;
+    const phase = ["timeout", "skipped"].includes(trial.phase) ? trial.timeout_phase : trial.phase;
     if (phase === "candidates" && message.phase !== "candidates") return false;
     if (phase !== "decision" && phase !== "candidates") return false;
     if (message.phase !== "candidates" && message.phase !== "decision") return false;
@@ -31,7 +31,7 @@ export function visibleRecipientMessages<T extends PlaybackMessage>(messages: T[
 
 /** Candidate snapshots for sequential scripts become available as cards appear. */
 export function visibleRecipientTrial<T extends PlaybackTrial>(trial: T, messages: PlaybackMessage[]): T {
-  if (trial.phase !== "candidates" && !(trial.phase === "timeout" && trial.timeout_phase === "candidates")) return trial;
+  if (trial.phase !== "candidates" && !(["timeout", "skipped"].includes(trial.phase) && trial.timeout_phase === "candidates")) return trial;
   const visibleIds = new Set<string>();
   for (const message of messages) {
     if (message.trial_id !== trial.id) continue;

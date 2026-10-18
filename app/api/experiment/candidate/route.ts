@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
-import { preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, type StudyProduct } from "@/lib/study/agent";
+import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, type StudyProduct } from "@/lib/study/agent";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
 const schema = z.object({
@@ -32,10 +32,16 @@ export async function POST(request: Request) {
       const requestText = body.request?.trim() ?? "";
       const guidance = preflightHumanRequest(requestText, profile);
       if (guidance) {
-        await logStudyEvent(db, { personId, trial, type: "delegation_rejected", key: body.key,
-          payload: { request: requestText, reason: "insufficient_specificity" } });
+        const broad = isBroadDelegation(requestText);
+        await logStudyEvent(db, { personId, trial, type: broad ? "delegation_rejected" : "prompt_rejected", key: body.key,
+          payload: { request: requestText, reason: broad ? "broad_delegation" : "empty_request" } });
         return NextResponse.json({ error: guidance }, { status: 422 });
       }
+      const prior = await db.from("study_messages").select("content")
+        .eq("trial_id", trial.id).eq("kind", "clarification")
+        .contains("payload", { request_key: body.key }).maybeSingle();
+      if (prior.error) throw prior.error;
+      if (prior.data) return NextResponse.json({ clarification: prior.data.content, idempotent: true });
     }
     const claim = await db.rpc("study_claim_agent", { p_trial_id: trial.id,
       p_person_id: personId, p_kind: body.task, p_key: body.key });
@@ -57,14 +63,17 @@ export async function POST(request: Request) {
       const result = await proposeOne({ profile, condition: trial.condition, products: available,
         existing, request: requestText });
       if (!result.value.valid_request) {
-        await db.from("study_messages").insert({ trial_id: trial.id, phase: "candidates", speaker: "agent",
-          origin: "agent", kind: "clarification", content: result.value.clarification,
-          payload: { model: result.model, response_id: result.responseId, latency_ms: result.latencyMs } });
-        await logStudyEvent(db, { personId, trial, type: "structured_request_rejected",
+        const clarification = result.value.clarification.trim() || "지금 준비된 상품 중에는 요청에 맞는 상품이 없습니다. 다른 방향으로 다시 요청해 주세요.";
+        const clarificationMessage = await db.from("study_messages").insert({ trial_id: trial.id, phase: "candidates", speaker: "agent",
+          origin: "agent", kind: "clarification", content: clarification,
+          payload: { model: result.model, response_id: result.responseId, latency_ms: result.latencyMs,
+            request_key: body.key } });
+        if (clarificationMessage.error) throw clarificationMessage.error;
+        await logStudyEvent(db, { personId, trial, type: "agent_no_matching_product",
           payload: { model: result.model, response_id: result.responseId, latency_ms: result.latencyMs } });
         await db.rpc("study_release_agent", { p_trial_id: trial.id, p_person_id: personId, p_key: body.key });
         claimed = false;
-        return NextResponse.json({ error: result.value.clarification }, { status: 422 });
+        return NextResponse.json({ clarification });
       }
       const selected=available.find(item=>item.source_product_id===result.value.product_id)!;
       const saved = await db.rpc("study_store_proposal", { p_trial_id: trial.id, p_person_id: personId,

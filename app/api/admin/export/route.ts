@@ -70,6 +70,7 @@ function metricRows(trials:any[],events:any[],people:any[]) {
       selection_change_count:count("selection_changed"),reason_edit_count:count("reason_changed"),
       agent_candidate_latency_ms:candidateLatency||null,agent_final_latency_ms:finalLatency||null,
       phase_timeout_count:count("phase_timeout"),timeout_phase:trial.timeout_phase,
+      skipped_at:trial.skipped_at,condition_skip_count:count("condition_skipped_after_timeout"),
       tab_leave_count:count("tab_hidden"),
       reconnect_count:count("connection_restored")+count("reconnected"),
       error_count:count("agent_error")+count("error"),event_count:list.length,

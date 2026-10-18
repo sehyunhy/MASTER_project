@@ -32,6 +32,7 @@ begin
       'v6_phase_heartbeat','v6_phase_ready','v6_verify_transition_code',
       'study_activate','study_advance','study_attach_stimulus','study_claim_agent',
       'study_confirm_candidate','study_enroll','study_finalize','study_finish_survey',
+      'study_skip_timed_out',
       'study_mark_candidates_visible','study_ping','study_release_agent',
       'study_store_batch','study_store_proposal'])
   loop
@@ -96,7 +97,7 @@ create table public.study_trials (
   candidate_builder text not null check(candidate_builder in ('human','agent')),
   decision_actor text not null check(decision_actor in ('human','agent')),
   profile_code text not null,
-  phase text not null default 'locked' check(phase in ('locked','candidates','decision','survey','complete','timeout')),
+  phase text not null default 'locked' check(phase in ('locked','candidates','decision','survey','complete','timeout','skipped')),
   phase_started_at timestamptz,
   phase_effective_ms integer not null default 0 check(phase_effective_ms between 0 and 180000),
   phase_last_ping_at timestamptz,
@@ -120,6 +121,7 @@ create table public.study_trials (
   survey_completed_at timestamptz,
   timed_out_at timestamptz,
   timeout_phase text,
+  skipped_at timestamptz,
   operator_review_needed boolean not null default false,
   stimulus_id uuid references public.study_stimuli(id),
   revision integer not null default 0,
@@ -233,7 +235,8 @@ begin
   if t.phase<>'locked' then return jsonb_build_object('accepted',t.phase<>'timeout','already_active',true,'phase',t.phase); end if;
   if t.order_position>1 then
     select * into previous from public.study_trials where person_id=p.id and role=t.role and order_position=t.order_position-1;
-    if previous.phase<>'complete' or previous.survey_completed_at is null then raise exception 'PREVIOUS_SURVEY_REQUIRED'; end if;
+    if not coalesce(previous.phase='complete' and previous.survey_completed_at is not null
+      or previous.phase='skipped' and previous.skipped_at is not null,false) then raise exception 'PREVIOUS_SURVEY_REQUIRED'; end if;
   end if;
   expected:=case t.order_position
     when 1 then '26d228663f13a88592a12d16cf9587caab0388b262d6d9f126ed62f9333aca94'
@@ -333,13 +336,44 @@ begin
   update public.study_trials set phase='complete',survey_completed_at=now_at,updated_at=now_at where id=t.id;
   insert into public.study_events(person_id,trial_id,role,condition,order_position,phase,actor,origin,event_type)
   values(t.person_id,t.id,t.role,t.condition,t.order_position,'survey','participant','participant','paper_survey_completed');
-  select count(*) into remaining from public.study_trials where person_id=t.person_id and role=t.role and phase<>'complete';
+  select count(*) into remaining from public.study_trials where person_id=t.person_id and role=t.role and phase not in ('complete','skipped');
   if remaining=0 then
     select * into p from public.study_people where id=t.person_id for update;
     update public.study_people set active_role=case when p.active_role=p.role_order[1] then p.role_order[2] else 'done' end,
       status=case when p.active_role=p.role_order[1] then 'active' else 'completed' end,updated_at=now_at where id=p.id;
   end if;
   return jsonb_build_object('complete',true,'role_complete',remaining=0);
+end; $$;
+
+create function public.study_skip_timed_out(p_trial_id uuid,p_person_id uuid,p_event_key uuid)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare t public.study_trials%rowtype; p public.study_people%rowtype; remaining integer;
+  now_at timestamptz:=clock_timestamp();
+begin
+  select * into t from public.study_trials where id=p_trial_id and person_id=p_person_id for update;
+  if t.id is null or p_event_key is null then raise exception 'TRIAL_NOT_FOUND'; end if;
+  if t.phase='skipped' then return jsonb_build_object('skipped',true,'idempotent',true); end if;
+  if t.phase<>'timeout' or t.timed_out_at is null then raise exception 'TIMEOUT_REQUIRED'; end if;
+  update public.study_trials set phase='skipped',skipped_at=now_at,
+    candidates_effective_ms=case when t.timeout_phase='candidates' then t.phase_effective_ms else candidates_effective_ms end,
+    candidates_ended_at=case when t.timeout_phase='candidates' then coalesce(candidates_ended_at,t.timed_out_at) else candidates_ended_at end,
+    decision_effective_ms=case when t.timeout_phase='decision' then t.phase_effective_ms else decision_effective_ms end,
+    decision_ended_at=case when t.timeout_phase='decision' then coalesce(decision_ended_at,t.timed_out_at) else decision_ended_at end,
+    updated_at=now_at where id=t.id;
+  insert into public.study_events(person_id,trial_id,role,condition,order_position,phase,actor,origin,event_type,payload,idempotency_key)
+  values(t.person_id,t.id,t.role,t.condition,t.order_position,t.timeout_phase,'participant','participant',
+    'condition_skipped_after_timeout',jsonb_build_object('effective_ms',t.phase_effective_ms,
+      'confirmed_candidates',jsonb_array_length(t.candidate_snapshots),'has_final',t.final_product_id is not null),p_event_key)
+  on conflict do nothing;
+  select count(*) into remaining from public.study_trials where person_id=t.person_id and role=t.role
+    and phase not in ('complete','skipped');
+  if remaining=0 then
+    select * into p from public.study_people where id=t.person_id for update;
+    update public.study_people set active_role=case when p.active_role=p.role_order[1] then p.role_order[2] else 'done' end,
+      status=case when p.active_role=p.role_order[1] then 'active' else 'completed' end,
+      updated_at=now_at where id=p.id;
+  end if;
+  return jsonb_build_object('skipped',true,'role_complete',remaining=0);
 end; $$;
 
 create function public.study_claim_agent(p_trial_id uuid,p_person_id uuid,p_kind text,p_key uuid)
@@ -562,6 +596,7 @@ revoke all on function public.study_ping(uuid,text,bigint,boolean) from public,a
 revoke all on function public.study_mark_candidates_visible(uuid,uuid) from public,anon,authenticated;
 revoke all on function public.study_advance(uuid,uuid) from public,anon,authenticated;
 revoke all on function public.study_finish_survey(uuid,uuid) from public,anon,authenticated;
+revoke all on function public.study_skip_timed_out(uuid,uuid,uuid) from public,anon,authenticated;
 revoke all on function public.study_store_proposal(uuid,uuid,uuid,text,text,text,text,text,integer,text) from public,anon,authenticated;
 revoke all on function public.study_claim_agent(uuid,uuid,text,uuid) from public,anon,authenticated;
 revoke all on function public.study_release_agent(uuid,uuid,uuid) from public,anon,authenticated;
@@ -575,6 +610,7 @@ grant execute on function public.study_ping(uuid,text,bigint,boolean) to service
 grant execute on function public.study_mark_candidates_visible(uuid,uuid) to service_role;
 grant execute on function public.study_advance(uuid,uuid) to service_role;
 grant execute on function public.study_finish_survey(uuid,uuid) to service_role;
+grant execute on function public.study_skip_timed_out(uuid,uuid,uuid) to service_role;
 grant execute on function public.study_store_proposal(uuid,uuid,uuid,text,text,text,text,text,integer,text) to service_role;
 grant execute on function public.study_claim_agent(uuid,uuid,text,uuid) to service_role;
 grant execute on function public.study_release_agent(uuid,uuid,uuid) to service_role;

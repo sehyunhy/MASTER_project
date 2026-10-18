@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       active: persons.filter(p=>p.status==="active").length,
       reviewNeeded: trialRows.filter(t=>t.operator_review_needed).length,
       trialsCompleted: trialRows.filter(t=>t.phase==="complete").length,
+      trialsSkipped: trialRows.filter(t=>t.phase==="skipped").length,
       orderCounts: Object.fromEntries(["ACDB","CBAD","BDCA","DABC"].map(order =>
         [order, persons.filter(person=>person.condition_order.join("")===order).length])),
       conditionCompleted: Object.fromEntries(["A","B","C","D"].map(condition =>

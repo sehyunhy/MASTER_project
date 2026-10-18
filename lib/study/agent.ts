@@ -64,16 +64,17 @@ export function groundedReason(profile: StudyProfile, product: StudyProduct, quo
   return `${profile.name}님의 종이 프로필과 대조해 검토했습니다. 상품 기록에서 확인한 근거는 “${evidence}”입니다. 종류는 ${product.category}, 연구용 가격은 ${product.price_krw.toLocaleString()}원입니다.`;
 }
 
-export function preflightHumanRequest(text: string, profile: StudyProfile) {
+export function isBroadDelegation(text: string) {
   const normalized = text.trim();
-  if (normalized.length < 18 || /^(선물|후보|상품)?\s*(추천|골라|찾아)\s*(해줘|해주세요|줘)?[.!?\s]*$/.test(normalized) || /^(그냥|알아서|네가|너가).*(골라|추천|해)/.test(normalized))
-    return "선물 받을 사람의 관심사나 사용 상황과 이번 후보의 구체적인 방향을 적어 주세요.";
-  const profileTerms = [profile.name, ...profile.hobbies, ...profile.recent_interest.split(/[\s,·.]+/), ...profile.preference.split(/[\s,·.]+/)]
-    .filter(term => term.length >= 2);
-  const hasRecipientEvidence = profileTerms.some(term => normalized.includes(term));
-  const hasDirection = /(쓰|사용|활용|읽|마시|요리|꾸미|관리|기록|사진|휴식|선호|편하|간단|공간|도구|소품|제품|향|크기|재질|색|가볍|보관|세척)/.test(normalized);
-  if (!hasRecipientEvidence || !hasDirection)
-    return "종이 프로필에 있는 관심사·선호 중 하나와 찾고 싶은 상품 방향을 함께 적어 주세요.";
+  return /^(선물|후보|상품)?\s*(추천|골라|찾아)\s*(해줘|해주세요|줘)?[.!?\s]*$/.test(normalized)
+    || /^(그냥|알아서|네가|너가|아무거나).*(골라|추천|찾아|해)/.test(normalized)
+    || /(?:3\s*개|세\s*개|여러\s*개|한\s*번에\s*다).*(?:추천|골라|찾아)/.test(normalized);
+}
+
+export function preflightHumanRequest(text: string, _profile: StudyProfile) {
+  const normalized = text.trim();
+  if (!normalized || isBroadDelegation(normalized))
+    return "찾고 싶은 상품이나 사용 상황을 직접 적어 주세요. 모든 후보를 Agent에게 맡기는 요청은 사용할 수 없습니다.";
   return null;
 }
 
@@ -85,7 +86,7 @@ const common = (profile: StudyProfile, condition: string, products: StudyProduct
 
 export async function proposeOne(input: { profile: StudyProfile; condition: string; products: StudyProduct[]; existing: StudyProduct[]; request: string }) {
   const result = await structured("propose_one", oneSchema, {
-    instructions: "You assist a Korean gift-choice study. First judge whether the participant's own request cites the supplied recipient's specific interests/use situation and specifies a direction for this one candidate. If not, valid_request=false and clarify without choosing a product. Otherwise choose exactly ONE product ID from the supplied approved pool, excluding already confirmed IDs. evidence_quote must be an exact 8-160 character substring of that product's source name or source description. Never invent features or demographic preferences. Do not ask for information already in context. The server validates your product ID and quote.",
+    instructions: "You assist a Korean gift-choice study. The participant may freely explore product directions, including ones different from the supplied recipient profile. Do not reject a specific request just because its category or interest differs from that profile. Choose exactly ONE product ID from the supplied approved pool, excluding confirmed IDs, only if a product reasonably matches the requested direction. If no product reasonably matches, set valid_request=false and briefly tell the participant in Korean that a matching product is not currently available and they may revise the request. Do not disclose internal pool, approval, or product IDs in the clarification. Do not substitute an unrelated product or invent one. evidence_quote must be an exact 8-160 character substring of the chosen product's source name or description when valid_request=true. Never invent product facts. The server validates the ID and quote.",
     context: common(input.profile, input.condition, input.products, input.existing), fields: { participant_request: input.request },
   });
   if (result.value.valid_request && !input.products.some(product => product.source_product_id === result.value.product_id))

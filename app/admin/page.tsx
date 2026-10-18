@@ -24,6 +24,7 @@ export default function AdminPage() {
     {summary&&<><div className="grid" style={{marginTop:22}}>{[
       ["등록된 사람",summary.count],["진행 중",summary.active],["완료",summary.completed],
       ["운영자 확인 필요",summary.reviewNeeded],["완료된 역할별 조건",summary.trialsCompleted],
+      ["시간초과 후 미완료",summary.trialsSkipped],
     ].map(([label,value])=><div className="card" key={label}><p className="eyebrow">{label}</p><h2>{value}</h2></div>)}</div>
       <h2>조건 순서 배정</h2><pre>{JSON.stringify(summary.orderCounts,null,2)}</pre>
       <h2>참가자</h2><div className="grid">{summary.people.map((person:any)=>

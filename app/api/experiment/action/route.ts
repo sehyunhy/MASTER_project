@@ -5,7 +5,7 @@ import { studySession, trialFor, logStudyEvent } from "@/lib/study/server";
 const schema = z.object({
   role: z.enum(["giver", "recipient"]), trialId: z.uuid(), type: z.enum([
     "activate", "ping", "candidatesVisible", "advance", "confirmCandidate", "finalizeHuman", "revealScriptedFinal",
-    "survey", "event", "scriptedShown", "withdraw",
+    "survey", "skipTimeout", "event", "scriptedShown", "withdraw",
   ]),
   key: z.uuid().optional(), code: z.string().optional(), tabId: z.string().max(80).optional(),
   sequence: z.number().int().optional(), active: z.boolean().optional(),
@@ -91,6 +91,12 @@ export async function POST(request: Request) {
       const response = await db.rpc("study_finish_survey", { p_trial_id: trial.id, p_person_id: person.id });
       if (response.error) throw response.error;
       result = response.data;
+    } else if (body.type === "skipTimeout") {
+      if (!body.key) throw new Error("REQUEST_KEY_REQUIRED");
+      const response = await db.rpc("study_skip_timed_out", { p_trial_id: trial.id,
+        p_person_id: person.id, p_event_key: body.key });
+      if (response.error) throw response.error;
+      result = response.data;
     } else if (body.type === "scriptedShown") {
       if (body.role!=="recipient" || !body.messageId) throw new Error("SCRIPTED_EVENT_NOT_ALLOWED");
       const {data:message,error}=await db.from("study_messages").select("*")
@@ -133,6 +139,7 @@ export async function POST(request: Request) {
       THREE_CANDIDATES_REQUIRED: "후보 세 개를 먼저 확정해 주세요.",
       HUMAN_REASON_REQUIRED: "다른 두 후보가 아닌 이 선물을 고른 이유를 구체적으로 적어 주세요.",
       PREVIOUS_SURVEY_REQUIRED: "직전 조건의 종이 설문 완료를 먼저 확인해 주세요.",
+      TIMEOUT_REQUIRED: "시간초과로 기록된 조건에서만 미완료로 넘어갈 수 있습니다.",
       APPROVED_STIMULUS_MISSING: "연구자가 검토한 관찰 자료가 아직 준비되지 않았습니다.",
       STIMULUS_CONTROL_MISMATCH: "조건 간 상품 통제가 일치하지 않습니다. 연구자에게 알려주세요.",
       OTHER_TAB_ACTIVE: "다른 탭에서 이 실험이 열려 있습니다.",
