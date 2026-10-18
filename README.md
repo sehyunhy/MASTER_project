@@ -4,7 +4,7 @@
 
 참가자 코드 입력은 없습니다. 첫 시작 시 서버가 등록번호와 ID를 발급합니다. P01은 **선물 주는 사람**, P02는 **선물 받는 사람**이라는 역할 표기입니다. 같은 참가자가 두 역할을 수행하며, 각 역할에서 A·B·C·D 네 조건을 체험합니다. 두 역할의 데이터는 trial별로 분리됩니다. 관계 친밀도 조작은 없습니다.
 
-한 기기로 다음 사람을 진행할 때는 이전 사람의 두 역할을 마친 뒤 시작 화면에서 **다음 참가자 시작**을 선택합니다. 서버는 이전 세션이 아직 진행 중이면 새 ID 발급을 거절합니다.
+한 기기로 다른 사람을 진행할 때는 시작 화면에서 역할을 고른 뒤 **새 참가자로 시작**을 선택합니다. 이전 사람이 진행 중이어도 새 ID를 발급하며, 이전 사람의 기록은 지우지 않고 미완료(`withdrawn`)로 남깁니다. 같은 사람의 두 번째 역할을 이어갈 때는 새 참가자 옵션을 선택하지 않습니다.
 
 | 조건 | 후보 세 개 | 최종 선물 |
 | --- | --- | --- |
@@ -26,12 +26,12 @@
 **데이터 삭제 주의:** 아래 첫 SQL은 `public`의 기존 연구 테이블과 상품 데이터를 삭제합니다. 이전 기록이 필요하면 먼저 Supabase에서 별도 백업하세요. 이 저장소에서는 SQL을 실행하지 않았습니다.
 
 1. SQL Editor에서 [study-fresh.sql](supabase/study-fresh.sql)을 실행합니다. 이 파일은 기존 연구 테이블을 지우고 `study_people`, `study_products`, `study_stimuli`, `study_trials`, `study_messages`, `study_events` **6개만** 만듭니다. 각 함수와 접근 제한도 생성합니다.
-   이미 위 파일로 운영 중이라면 다시 실행하지 말고 [study-timeout-continue.sql](supabase/study-timeout-continue.sql)만 실행하세요. 기존 참가자와 기록을 유지하면서 시간초과 후 다음 조건 진행 규칙을 추가합니다.
+   이미 위 파일로 운영 중이라면 다시 실행하지 마세요. 아직 적용하지 않았다면 [study-timeout-continue.sql](supabase/study-timeout-continue.sql)을 실행하고, 이어서 [study-new-participant.sql](supabase/study-new-participant.sql)을 실행하세요. 두 파일은 기존 기록을 유지하면서 각각 시간초과 후 다음 조건 진행 및 새 참가자 시작을 추가합니다.
 2. [study-products.sql](supabase/study-products.sql)을 실행합니다. 사용자가 제공한 Walmart CSV에서 선택된 12개 승인 상품의 독립 스냅샷입니다. 연구 가격은 과거 CSV 시점의 USD에 1,350원을 적용하고 100원 단위로 반올림한 값이며 현재 판매가가 아닙니다. 이는 **프로필당 3개 상품만 승인**된 상태이므로 순차 후보 재요청의 선택 폭은 제한적입니다. 연구자가 더 넓은 상품 풀을 원하면 검토·승인한 행을 추가해야 합니다.
 3. [study-stimuli-draft.sql](supabase/study-stimuli-draft.sql)은 선택 실행합니다. 4개 프로필×4조건에 대한 **미승인 초안** 16개를 만듭니다. 연구자가 대화 문구, 최종 상품, 상품 통제, 노출 순서를 직접 검토·수정해야 합니다. 미승인 상태에서는 수혜자 역할이 시작되지 않습니다. 검토가 끝난 뒤에만 [study-approve-stimuli.sql](supabase/study-approve-stimuli.sql)을 실행합니다.
 4. Vercel 서버 환경변수에 `SUPABASE_URL`, 서비스 역할 키, `ANTHROPIC_API_KEY`, 실제 접근 가능한 `ANTHROPIC_MODEL`, `ADMIN_PASSWORD`를 설정하고 배포합니다. 브라우저용 `NEXT_PUBLIC_` 변수에 비밀 키를 넣지 않습니다.
 
-구버전 설치 SQL과 실행 경로는 저장소에서 제거했습니다. 위 네 SQL만 새 연구 설정에 사용합니다.
+구버전 설치 SQL과 실행 경로는 저장소에서 제거했습니다. `study-fresh.sql`은 신규 설치 전용이며 운영 DB에 다시 실행하면 데이터가 삭제됩니다.
 
 ## 자료 구조와 분석
 

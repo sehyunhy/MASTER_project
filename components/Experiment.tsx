@@ -112,7 +112,7 @@ export function Experiment({ role }: { role: Role }) {
       const response = await fetch("/api/experiment/candidate", { method:"POST", headers:{"content-type":"application/json"},
         body:JSON.stringify({role,trialId:state.trial.id,task,key,request}) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Agent 작업을 완료하지 못했습니다.");
+      if (!response.ok) throw new Error(`${result.error ?? "Agent 작업을 완료하지 못했습니다."}${result.errorRef ? ` (${result.errorRef})` : ""}`);
       if (task==="one" && !result.clarification) { setDraft(""); draftStarted.current=false; }
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "오류가 발생했습니다."); }
@@ -321,14 +321,17 @@ export function Experiment({ role }: { role: Role }) {
               <div key={message.id} className={`study-bubble ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
                 <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b>
                 <p>{message.content}</p>
-                {message.kind==="candidate_proposal" && message.payload?.product && <ProductCard product={message.payload.product} onOpen={openProduct} />}
+                {message.kind==="candidate_proposal" && message.payload?.product && <ProductCard product={message.payload.product} onOpen={openProduct}
+                  action={item.id===trial?.id && item.phase==="candidates" && role==="giver" &&
+                    item.candidate_builder==="human" && item.proposal?.request_key===message.payload?.request_key
+                    ? {label:`이 상품을 후보 ${currentCount+1}로 선택·확정`,run:()=>void action("confirmCandidate",{requestKey:item.proposal!.request_key})}
+                    : undefined} disabled={busy} />}
                 {message.kind==="candidate_batch" && <div className="study-product-grid">{(message.payload?.candidates??[]).map((product:Product)=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div>}
               </div>)}
             {item.id===trial?.id && item.phase==="candidates" && <>
               {role==="giver" && item.candidate_builder==="human" && <div className="study-chat-control">
                 <h3>후보 {Math.min(3,currentCount+1)} / 3</h3>
-                {item.proposal ? <><p>제안된 상품을 확인하고 확정하거나, 요청을 다듬어 다시 물어보세요.</p><div className="study-product-grid"><ProductCard product={item.proposal.product} onOpen={openProduct}
-                  action={{label:"이 상품을 후보로 확정",run:()=>void action("confirmCandidate",{requestKey:item.proposal!.request_key})}} disabled={busy} /></div></>
+                {item.proposal ? <p>제안된 상품을 후보로 선택하려면 상품 카드 아래의 파란 버튼을 눌러 주세요. 다른 상품을 원하면 요청을 고쳐 다시 보내세요.</p>
                 : currentCount<3 ? <p>이번 후보에서 찾고 싶은 상품이나 사용 상황을 자유롭게 적어 주세요.</p> : <p>후보 세 개를 확정했습니다.</p>}
                 {currentCount<3 && <form onSubmit={e=>{e.preventDefault();void submitPrompt();}}>
                   <textarea aria-label="이번 후보에 대한 요청" value={draft} onChange={e=>onDraft(e.target.value)}
@@ -379,6 +382,8 @@ export function Experiment({ role }: { role: Role }) {
             <input type="password" inputMode="numeric" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)} placeholder="코드 입력" /></label>
             <button disabled={busy||!code} onClick={()=>void action("activate",{code})}>조건 {trial.condition} 시작</button></div>}
           {trial?.phase==="candidates" && <div className="study-footer-task"><span>후보 {currentCount}/3 · 전체 후보 단계 유효 {seconds}/60초 이상</span>
+            {role==="giver" && trial.candidate_builder==="human" && trial.proposal &&
+              <button disabled={busy} onClick={()=>void action("confirmCandidate",{requestKey:trial.proposal!.request_key})}>제안된 상품을 후보 {currentCount+1}로 선택·확정</button>}
             <button disabled={busy||!minReady||currentCount!==3} onClick={()=>void action("advance")}>최종 단계로 이동</button></div>}
           {trial?.phase==="decision" && <div className="study-footer-task"><span>결과 확인 · 유효 {seconds}/60초 이상</span>
             <button disabled={busy||!minReady||!trial.final_product_id} onClick={()=>void action("advance")}>종이 설문으로 이동</button></div>}

@@ -31,7 +31,8 @@ async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input
     tool_choice: { type: "tool", name },
   });
   const block = response.content.find(part => part.type === "tool_use" && part.name === name);
-  const value = schema.parse(block?.type === "tool_use" ? block.input : null);
+  if (block?.type !== "tool_use") throw new Error(`AGENT_TOOL_RESPONSE_MISSING:${response.stop_reason}`);
+  const value = schema.parse(block.input);
   return { value, model, responseId: response.id, latencyMs: Math.round(performance.now() - began) };
 }
 
@@ -53,10 +54,14 @@ const finalSchema = z.object({ product_id: z.string(), evidence_quote: z.string(
 
 export function verifiedEvidence(product: StudyProduct, quote: string) {
   const normalized=quote.trim();
-  if (normalized.length<8 || normalized.length>160 ||
-    !(product.name_original.includes(normalized)||product.description_original.includes(normalized)))
-    throw new Error("AGENT_EVIDENCE_NOT_IN_SOURCE");
-  return normalized;
+  if (normalized.length>=8 && normalized.length<=160 &&
+    (product.name_original.includes(normalized)||product.description_original.includes(normalized)))
+    return normalized;
+  // An imperfect model quotation must never become an invented product claim.
+  // Use a verbatim excerpt from the DB record instead of failing the request.
+  const fallback=(product.name_original.trim() || product.description_original.trim()).slice(0,160);
+  if (fallback.length<8) throw new Error("PRODUCT_SOURCE_INCOMPLETE");
+  return fallback;
 }
 
 export function groundedReason(profile: StudyProfile, product: StudyProduct, quote: string) {

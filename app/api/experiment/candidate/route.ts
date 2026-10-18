@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
-import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, type StudyProduct } from "@/lib/study/agent";
+import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
 const schema = z.object({
@@ -76,21 +76,23 @@ export async function POST(request: Request) {
         return NextResponse.json({ clarification });
       }
       const selected=available.find(item=>item.source_product_id===result.value.product_id)!;
+      const evidence=verifiedEvidence(selected,result.value.evidence_quote);
       const saved = await db.rpc("study_store_proposal", { p_trial_id: trial.id, p_person_id: personId,
         p_request_key: body.key, p_source_id: result.value.product_id,
         p_reply: "기록된 상품 정보에서 후보 한 개를 제안했습니다.",
-        p_reason: groundedReason(profile,selected,result.value.evidence_quote),
+        p_reason: groundedReason(profile,selected,evidence),
         p_model: result.model, p_response_id: result.responseId,
-        p_latency_ms: result.latencyMs,p_evidence_quote:result.value.evidence_quote });
+        p_latency_ms: result.latencyMs,p_evidence_quote:evidence });
       if (saved.error) throw saved.error;
       claimed = false;
       return NextResponse.json({ proposal: saved.data });
     }
     if (body.task === "batch") {
       const result = await proposeThree({ profile, condition: trial.condition, products: pool });
-      const reasons = Object.fromEntries(result.value.product_ids.map((id, index) => [id,
-        groundedReason(profile,pool.find(item=>item.source_product_id===id)!,result.value.evidence_quotes[index])]));
-      const evidenceQuotes=Object.fromEntries(result.value.product_ids.map((id,index)=>[id,result.value.evidence_quotes[index]]));
+      const evidenceQuotes=Object.fromEntries(result.value.product_ids.map((id,index)=>[id,
+        verifiedEvidence(pool.find(item=>item.source_product_id===id)!,result.value.evidence_quotes[index])]));
+      const reasons = Object.fromEntries(result.value.product_ids.map(id => [id,
+        groundedReason(profile,pool.find(item=>item.source_product_id===id)!,evidenceQuotes[id])]));
       const saved = await db.rpc("study_store_batch", { p_trial_id: trial.id, p_person_id: personId,
         p_request_key: body.key, p_source_ids: result.value.product_ids, p_reasons: reasons,
         p_reply: "기록된 상품 정보에서 후보 세 개를 준비했습니다.",
@@ -105,17 +107,18 @@ export async function POST(request: Request) {
     if (chosen.length !== 3) throw new Error("SAVED_CANDIDATES_MISSING");
     const result = await chooseFinal({ profile, condition: trial.condition, products: chosen });
     const selected=chosen.find(item=>item.source_product_id===result.value.product_id)!;
+    const evidence=verifiedEvidence(selected,result.value.evidence_quote);
     const saved = await db.rpc("study_finalize", { p_trial_id: trial.id, p_person_id: personId,
       p_product_id: result.value.product_id, p_actor: "agent",
-      p_reason: groundedReason(profile,selected,result.value.evidence_quote),
+      p_reason: groundedReason(profile,selected,evidence),
       p_event_key: body.key, p_model: result.model, p_response_id: result.responseId,
       p_latency_ms: result.latencyMs, p_prompt_version: STUDY_PROMPT_VERSION,
-      p_evidence_quote: result.value.evidence_quote });
+      p_evidence_quote: evidence });
     if (saved.error) throw saved.error;
     claimed = false;
     return NextResponse.json({ final: saved.data });
   } catch (cause) {
-    console.error("Study Agent task failed", { task: body.task, cause });
+    console.error("Study Agent task failed", { task: body.task, requestKey: body.key, cause });
     if (db && personId && claimed) await db.rpc("study_release_agent", {
       p_trial_id: body.trialId, p_person_id: personId, p_key: body.key,
     });
@@ -126,6 +129,6 @@ export async function POST(request: Request) {
           payload: { task: body.task, code: cause instanceof Error ? cause.message : "UNKNOWN" } });
       } catch {}
     }
-    return NextResponse.json({ error: "상품 정보를 준비하지 못했습니다. 다시 시도해 주세요." }, { status: 503 });
+    return NextResponse.json({ error: "상품 정보를 준비하지 못했습니다. 연구자에게 오류번호를 알려주세요.", errorRef: body.key.slice(0,8) }, { status: 503 });
   }
 }

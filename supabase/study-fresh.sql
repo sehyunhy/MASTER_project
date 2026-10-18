@@ -31,7 +31,7 @@ begin
       'v6_confirm_candidate','v6_confirm_trial_intro','v6_enroll_subject','v6_finalize_selection',
       'v6_phase_heartbeat','v6_phase_ready','v6_verify_transition_code',
       'study_activate','study_advance','study_attach_stimulus','study_claim_agent',
-      'study_confirm_candidate','study_enroll','study_finalize','study_finish_survey',
+      'study_begin_new_person','study_confirm_candidate','study_enroll','study_finalize','study_finish_survey',
       'study_skip_timed_out',
       'study_mark_candidates_visible','study_ping','study_release_agent',
       'study_store_batch','study_store_proposal'])
@@ -216,6 +216,25 @@ begin
   insert into public.study_events(person_id,role,actor,origin,event_type,payload)
   values(p.id,p_role,'system','system','enrolled',jsonb_build_object('block',p.enrollment_block,'order',p.condition_order));
   return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'active_role',p.active_role);
+end; $$;
+
+create function public.study_begin_new_person(p_previous_id uuid,p_role text,p_browser_key uuid)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare previous public.study_people%rowtype; enrolled jsonb; next_id uuid; now_at timestamptz:=clock_timestamp();
+begin
+  if p_role not in ('giver','recipient') or p_browser_key is null then raise exception 'INVALID_ENROLLMENT'; end if;
+  if p_previous_id is not null then
+    select * into previous from public.study_people where id=p_previous_id for update;
+  end if;
+  enrolled:=public.study_enroll(p_role,p_browser_key);
+  next_id:=(enrolled->>'person_id')::uuid;
+  if previous.id is not null and previous.id<>next_id and previous.status='active' then
+    update public.study_people set status='withdrawn',updated_at=now_at where id=previous.id;
+    insert into public.study_events(person_id,role,actor,origin,event_type,payload)
+    values(previous.id,previous.active_role,'system','system','previous_session_ended_for_new_person',
+      jsonb_build_object('new_person_id',next_id,'unfinished_trials_preserved',true));
+  end if;
+  return enrolled;
 end; $$;
 
 create function public.study_activate(p_person_id uuid,p_trial_id uuid,p_code text,p_attempt_key uuid)
@@ -591,6 +610,7 @@ begin
 end; $$;
 
 revoke all on function public.study_enroll(text,uuid) from public,anon,authenticated;
+revoke all on function public.study_begin_new_person(uuid,text,uuid) from public,anon,authenticated;
 revoke all on function public.study_activate(uuid,uuid,text,uuid) from public,anon,authenticated;
 revoke all on function public.study_ping(uuid,text,bigint,boolean) from public,anon,authenticated;
 revoke all on function public.study_mark_candidates_visible(uuid,uuid) from public,anon,authenticated;
@@ -605,6 +625,7 @@ revoke all on function public.study_store_batch(uuid,uuid,uuid,text[],jsonb,text
 revoke all on function public.study_finalize(uuid,uuid,text,text,text,uuid,text,text,integer,text,text) from public,anon,authenticated;
 revoke all on function public.study_attach_stimulus(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.study_enroll(text,uuid) to service_role;
+grant execute on function public.study_begin_new_person(uuid,text,uuid) to service_role;
 grant execute on function public.study_activate(uuid,uuid,text,uuid) to service_role;
 grant execute on function public.study_ping(uuid,text,bigint,boolean) to service_role;
 grant execute on function public.study_mark_candidates_visible(uuid,uuid) to service_role;
