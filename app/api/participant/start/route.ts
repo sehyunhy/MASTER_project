@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       if (result.error) throw result.error;
       person = result.data;
     }
-    if (person.status !== "active" || person.current_role !== parsed.data.role)
+    if (person.status !== "active" || person.active_role !== parsed.data.role)
       return NextResponse.json({ error: person.status === "completed" ? "두 역할을 완료했습니다. 다음 참가자는 ‘새 참가자 시작’을 선택해 주세요." : "연구자가 안내한 현재 역할을 선택해 주세요." }, { status: 409 });
     const response = NextResponse.json({ participant: { id: person.id, role: parsed.data.role },
       enrollmentNumber: person.enrollment_number, roleCode: parsed.data.role === "giver" ? "P01" : "P02" });

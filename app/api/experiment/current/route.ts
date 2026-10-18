@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const safeTrials = visible.map((item: any) => item.id === trial.id ? safeTrial : item);
     return NextResponse.json({
       person: { id: person.id, enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
-        conditionOrder: person.condition_order, enrollmentBlock: person.enrollment_block, currentRole: person.current_role },
+        conditionOrder: person.condition_order, enrollmentBlock: person.enrollment_block, currentRole: person.active_role },
       trial: safeTrial, trials: safeTrials, messages: currentMessages, profile,
       aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     });

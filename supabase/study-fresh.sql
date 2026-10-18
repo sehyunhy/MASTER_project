@@ -45,7 +45,7 @@ create table public.study_people (
   enrollment_number bigint generated always as identity unique,
   browser_key uuid not null unique,
   first_role text not null check(first_role in ('giver','recipient')),
-  current_role text not null check(current_role in ('giver','recipient','done')),
+  active_role text not null check(active_role in ('giver','recipient','done')),
   role_order text[] not null,
   condition_order text[] not null,
   order_index smallint not null check(order_index between 0 and 3),
@@ -186,8 +186,8 @@ begin
   if p_role not in ('giver','recipient') or p_browser_key is null then raise exception 'INVALID_ENROLLMENT'; end if;
   perform pg_advisory_xact_lock(hashtext('study-enrollment'));
   select * into p from public.study_people where browser_key=p_browser_key;
-  if found then return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'current_role',p.current_role); end if;
-  insert into public.study_people(browser_key,first_role,current_role,role_order,
+  if found then return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'active_role',p.active_role); end if;
+  insert into public.study_people(browser_key,first_role,active_role,role_order,
     condition_order,order_index,enrollment_block,profile_code)
   values(p_browser_key,p_role,p_role,array[p_role,case when p_role='giver' then 'recipient' else 'giver' end],
     array['A','C','D','B'],0,1,'R1') returning * into p;
@@ -213,7 +213,7 @@ begin
   end loop;
   insert into public.study_events(person_id,role,actor,origin,event_type,payload)
   values(p.id,p_role,'system','system','enrolled',jsonb_build_object('block',p.enrollment_block,'order',p.condition_order));
-  return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'current_role',p.current_role);
+  return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'active_role',p.active_role);
 end; $$;
 
 create function public.study_activate(p_person_id uuid,p_trial_id uuid,p_code text,p_attempt_key uuid)
@@ -224,7 +224,7 @@ declare p public.study_people%rowtype; t public.study_trials%rowtype; previous p
 begin
   select * into p from public.study_people where id=p_person_id for update;
   select * into t from public.study_trials where id=p_trial_id and person_id=p_person_id for update;
-  if p.id is null or t.id is null or p.status<>'active' or p.current_role<>t.role then raise exception 'ROLE_NOT_ACTIVE'; end if;
+  if p.id is null or t.id is null or p.status<>'active' or p.active_role<>t.role then raise exception 'ROLE_NOT_ACTIVE'; end if;
   select * into prior_attempt from public.study_events where trial_id=t.id and idempotency_key=p_attempt_key;
   if prior_attempt.id is not null then
     return jsonb_build_object('accepted',coalesce((prior_attempt.payload->>'accepted')::boolean,false),
@@ -336,8 +336,8 @@ begin
   select count(*) into remaining from public.study_trials where person_id=t.person_id and role=t.role and phase<>'complete';
   if remaining=0 then
     select * into p from public.study_people where id=t.person_id for update;
-    update public.study_people set current_role=case when p.current_role=p.role_order[1] then p.role_order[2] else 'done' end,
-      status=case when p.current_role=p.role_order[1] then 'active' else 'completed' end,updated_at=now_at where id=p.id;
+    update public.study_people set active_role=case when p.active_role=p.role_order[1] then p.role_order[2] else 'done' end,
+      status=case when p.active_role=p.role_order[1] then 'active' else 'completed' end,updated_at=now_at where id=p.id;
   end if;
   return jsonb_build_object('complete',true,'role_complete',remaining=0);
 end; $$;

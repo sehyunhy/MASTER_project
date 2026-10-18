@@ -17,7 +17,7 @@ export async function studySession(role?: "giver" | "recipient") {
   const { data: person, error } = await db.from("study_people").select("*").eq("id", personId).single();
   if (error || !person) throw new Error("SESSION_REQUIRED");
   if (person.status === "withdrawn") throw new Error("STUDY_WITHDRAWN");
-  if (role && person.current_role !== role) throw new Error("ROLE_LOCKED");
+  if (role && person.active_role !== role) throw new Error("ROLE_LOCKED");
   return { db, person };
 }
 
