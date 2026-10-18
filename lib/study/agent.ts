@@ -13,7 +13,7 @@ export type StudyProfile = {
 
 function api() {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY_MISSING");
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20_000, maxRetries: 0 });
 }
 
 async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input: {
@@ -37,6 +37,9 @@ async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input
 }
 
 function schemaToToolProperties(name: string): Record<string, unknown> {
+  if (name === "plan_product_search") return {
+    english_terms: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
+  };
   if (name === "propose_one") return {
     valid_request: { type: "boolean" }, clarification: { type: "string" },
     product_id: { type: "string" }, evidence_quote: { type: "string" },
@@ -49,6 +52,7 @@ function schemaToToolProperties(name: string): Record<string, unknown> {
 }
 
 const oneSchema = z.object({ valid_request: z.boolean(), clarification: z.string(), product_id: z.string(), evidence_quote: z.string() });
+const searchPlanSchema = z.object({ english_terms: z.array(z.string().min(2).max(60)).min(1).max(8) });
 const batchSchema = z.object({ product_ids: z.array(z.string()).length(3), evidence_quotes: z.array(z.string()).length(3) });
 const finalSchema = z.object({ product_id: z.string(), evidence_quote: z.string() });
 
@@ -83,15 +87,27 @@ export function preflightHumanRequest(text: string, _profile: StudyProfile) {
   return null;
 }
 
+export async function planProductSearch(request: string, profile: StudyProfile) {
+  const result = await structured("plan_product_search",searchPlanSchema,{
+    instructions:"Translate the participant's Korean gift request into concise English shopping search terms. Preserve the requested product type and concrete attributes. Return product nouns and useful synonyms, not generic words such as gift, present, product, person or recommendation. A request can differ from the recipient profile; do not replace it with the profile's interests. The server uses these terms only to rank recorded product fields.",
+    context:{recipient:profile},fields:{participant_request:request},
+  });
+  return {terms:result.value.english_terms.map(term=>term.trim().toLowerCase()).filter(Boolean),
+    model:result.model,responseId:result.responseId,latencyMs:result.latencyMs};
+}
+
 const common = (profile: StudyProfile, condition: string, products: StudyProduct[], existing: StudyProduct[]) => ({
-  condition, profile, budget_krw: profile.gift_budget, approved_product_pool: products,
+  condition, profile, budget_krw: profile.gift_budget,
+  verified_product_pool: products.map(product=>({source_product_id:product.source_product_id,
+    name_original:product.name_original,category:product.category,price_krw:product.price_krw,
+    description_excerpt:product.description_original.slice(0,700)})),
   already_confirmed: existing.map(product => product.source_product_id),
   authority: condition === "A" || condition === "B" ? "human_final" : "agent_final",
 });
 
 export async function proposeOne(input: { profile: StudyProfile; condition: string; products: StudyProduct[]; existing: StudyProduct[]; request: string }) {
   const result = await structured("propose_one", oneSchema, {
-    instructions: "You assist a Korean gift-choice study. The participant may freely explore product directions, including ones different from the supplied recipient profile. Do not reject a specific request just because its category or interest differs from that profile. Choose exactly ONE product ID from the supplied approved pool, excluding confirmed IDs, only if a product reasonably matches the requested direction. If no product reasonably matches, set valid_request=false and briefly tell the participant in Korean that a matching product is not currently available and they may revise the request. Do not disclose internal pool, approval, or product IDs in the clarification. Do not substitute an unrelated product or invent one. evidence_quote must be an exact 8-160 character substring of the chosen product's source name or description when valid_request=true. Never invent product facts. The server validates the ID and quote.",
+    instructions: "You assist a Korean gift-choice study. The participant may freely explore product directions, including ones different from the supplied recipient profile. Do not reject a specific request just because its category or interest differs from that profile. Choose exactly ONE product ID from the supplied verified product search results, excluding confirmed IDs, only if a product reasonably matches the requested direction. If no product reasonably matches, set valid_request=false. Do not substitute an unrelated product or invent one. evidence_quote must be an exact 8-160 character substring of the chosen product's source name or description excerpt when valid_request=true. Never invent product facts. The server validates the ID and quote.",
     context: common(input.profile, input.condition, input.products, input.existing), fields: { participant_request: input.request },
   });
   if (result.value.valid_request && !input.products.some(product => product.source_product_id === result.value.product_id))
@@ -103,7 +119,7 @@ export async function proposeOne(input: { profile: StudyProfile; condition: stri
 
 export async function proposeThree(input: { profile: StudyProfile; condition: string; products: StudyProduct[] }) {
   const result = await structured("propose_three", batchSchema, {
-    instructions: "You assist a Korean gift-choice study. Choose exactly three distinct product IDs from the supplied approved pool. For each in matching order provide evidence_quotes: an exact 8-160 character substring of that product's source name or source description. Do not ask the participant for criteria: this condition delegates candidate construction to you. The server validates IDs and quotes and displays product facts from the database.",
+    instructions: "You assist a Korean gift-choice study. Choose exactly three distinct product IDs from the supplied verified product search results. For each in matching order provide evidence_quotes: an exact 8-160 character substring of that product's source name or source description excerpt. Do not ask the participant for criteria: this condition delegates candidate construction to you. The server validates IDs and quotes and displays product facts from the database.",
     context: common(input.profile, input.condition, input.products, []), fields: {},
   });
   if (new Set(result.value.product_ids).size !== 3 || result.value.product_ids.some(id => !input.products.some(product => product.source_product_id === id)))

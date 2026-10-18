@@ -27,16 +27,18 @@
 
 1. SQL Editor에서 [study-fresh.sql](supabase/study-fresh.sql)을 실행합니다. 이 파일은 기존 연구 테이블을 지우고 `study_people`, `study_products`, `study_stimuli`, `study_trials`, `study_messages`, `study_events` **6개만** 만듭니다. 각 함수와 접근 제한도 생성합니다.
    이미 위 파일로 운영 중이라면 다시 실행하지 마세요. 아직 적용하지 않았다면 [study-timeout-continue.sql](supabase/study-timeout-continue.sql)을 실행하고, 이어서 [study-new-participant.sql](supabase/study-new-participant.sql)을 실행하세요. 두 파일은 기존 기록을 유지하면서 각각 시간초과 후 다음 조건 진행 및 새 참가자 시작을 추가합니다.
-2. [study-products.sql](supabase/study-products.sql)을 실행합니다. 사용자가 제공한 Walmart CSV에서 선택된 12개 승인 상품의 독립 스냅샷입니다. 연구 가격은 과거 CSV 시점의 USD에 1,350원을 적용하고 100원 단위로 반올림한 값이며 현재 판매가가 아닙니다. 이는 **프로필당 3개 상품만 승인**된 상태이므로 순차 후보 재요청의 선택 폭은 제한적입니다. 연구자가 더 넓은 상품 풀을 원하면 검토·승인한 행을 추가해야 합니다.
+2. [study-products.sql](supabase/study-products.sql)을 실행해 기존 12개 연구자 선정 상품을 넣고, 이어서 [study-walmart-catalog.sql](supabase/study-walmart-catalog.sql)을 실행해 CSV에서 필수 정보와 50,000원 상한을 통과한 760개 상품을 추가합니다. 두 번째 파일은 기존 12개와 참가자 기록을 덮어쓰지 않습니다. 원본은 사용자 제공 `walmart-products.csv` 1,000행이며, [생성 스크립트](scripts/build_walmart_catalog_sql.py)로 다시 만들 수 있습니다. `reviewed=true`는 추가 760개에 대해서는 **필수 원본 필드·가격의 자동 검사**를 뜻하며 개별 상품에 대한 연구자 수동 승인을 뜻하지 않습니다.
 3. [study-stimuli-draft.sql](supabase/study-stimuli-draft.sql)은 선택 실행합니다. 4개 프로필×4조건에 대한 **미승인 초안** 16개를 만듭니다. 연구자가 대화 문구, 최종 상품, 상품 통제, 노출 순서를 직접 검토·수정해야 합니다. 미승인 상태에서는 수혜자 역할이 시작되지 않습니다. 검토가 끝난 뒤에만 [study-approve-stimuli.sql](supabase/study-approve-stimuli.sql)을 실행합니다.
-4. Vercel 서버 환경변수에 `SUPABASE_URL`, 서비스 역할 키, `ANTHROPIC_API_KEY`, 실제 접근 가능한 `ANTHROPIC_MODEL`, `ADMIN_PASSWORD`를 설정하고 배포합니다. 브라우저용 `NEXT_PUBLIC_` 변수에 비밀 키를 넣지 않습니다.
+4. Vercel 서버 환경변수에 `SUPABASE_URL`, 서비스 역할 키, `ANTHROPIC_API_KEY`, 실제 접근 가능한 `ANTHROPIC_MODEL`, `ADMIN_PASSWORD`를 설정하고 배포합니다. Claude Console에서 **Web search**를 활성화해야 CSV에 없는 상품을 웹에서 찾을 수 있습니다. 브라우저용 `NEXT_PUBLIC_` 변수에 비밀 키를 넣지 않습니다.
+
+실시간 웹 검색은 Walmart·Target·Amazon의 상품 페이지로 제한합니다. 서버가 페이지의 구조화된 상품명·이미지·USD 가격을 직접 읽지 못하면 그 상품은 후보에 넣지 않습니다. 판매처가 자동 접근을 막거나 구조화된 가격을 제공하지 않으면 해당 요청은 실패할 수 있습니다. 웹 상품은 검색 당시 정보를 trial에 저장하지만, 참가자마다 검색 결과와 상품 가격이 달라질 수 있으므로 본 실험 전 파일럿에서 상품 통제 방식을 검토해야 합니다.
 
 구버전 설치 SQL과 실행 경로는 저장소에서 제거했습니다. `study-fresh.sql`은 신규 설치 전용이며 운영 DB에 다시 실행하면 데이터가 삭제됩니다.
 
 ## 자료 구조와 분석
 
 - `study_people`: 자동 등록 ID, 역할 순서, 5명 블록, 네 조건의 순서. 참가자 수 상한 없음.
-- `study_products`: 검토된 Walmart 상품 사실·이미지·연구용 가격.
+- `study_products`: CSV 상품 또는 서버가 판매 페이지의 구조화된 상품 데이터를 직접 확인한 웹 상품의 이름·가격·이미지·출처. 웹 상품은 `dataset_version`이 `live-web-...`이며, 참가자 trial에 당시의 스냅샷을 저장합니다.
 - `study_stimuli`: 수혜자용 연구자 검토 시나리오. 같은 프로필의 A–D에서 후보·가격·최종 상품을 동일하게 고정.
 - `study_trials`: 사람×역할×조건, 과업 수행 주체, 후보·결과 스냅샷, 서버 유효 노출, 시간초과·종이 설문 완료.
 - `study_messages`: 화면 대화의 순서, 발신자와 실제/Agent/구성 시나리오 출처.

@@ -339,7 +339,7 @@ export function Experiment({ role }: { role: Role }) {
                   <button type="submit" disabled={busy||!draft.trim()}>후보 한 개 요청</button></form>}
               </div>}
               {role==="giver" && item.candidate_builder==="agent" && currentCount===0 && <div className="study-chat-control">
-                <p>Agent가 승인된 상품 정보에서 후보 세 개를 준비합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
+                <p>Agent가 기록된 상품과 확인 가능한 쇼핑 상품 정보에서 후보 세 개를 준비합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
               {role==="recipient" && <div className="study-chat-control"><p>연구자가 구성한 대화와 후보를 관찰해 주세요. 화면 속 요청과 클릭은 당신의 행동으로 기록되지 않습니다.</p></div>}
               {role==="giver" && item.candidate_builder==="human" && currentCount===3 &&
                 <div className="study-chat-control"><div className="study-product-grid">{item.candidate_snapshots.map(product=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div></div>}
@@ -402,7 +402,7 @@ export function Experiment({ role }: { role: Role }) {
         <h2>{detail.name_ko}</h2><strong>{Number(detail.price_krw).toLocaleString()}원</strong>
         <p>{detail.name_original}</p><p>{detail.description_original}</p>
         {detail.source_url && <a href={detail.source_url} target="_blank" rel="noreferrer">원본 상품 정보</a>}
-        <small>연구용 고정 가격과 기록된 상품 설명입니다. 현재 판매 정보와 다를 수 있습니다.</small>
+        <small>상품 기록 또는 판매 페이지에서 확인한 가격을 연구용 고정 환율로 환산했습니다. 실제 결제가는 다를 수 있습니다.</small>
       </div></div>}
   </main>;
 }
