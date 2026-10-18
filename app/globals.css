@@ -74,12 +74,17 @@ button, input { font: inherit; }
 .study-side h1{font-size:25px;margin:0 0 8px}.study-side>p,.study-side section p{line-height:1.6;color:#66809d}
 .study-side section{padding:20px 0;border-top:1px solid #e6edf6}.study-side h2{font-size:16px;margin:0 0 8px}
 .study-side section strong{line-height:1.5}.study-side a{color:#2071dd}
-.study-chat-phone{height:min(960px,calc(100svh - 24px));min-height:610px;border:11px solid #1b2635;border-radius:47px;background:#1b2635;box-shadow:0 28px 75px #1c365028;overflow:hidden}
+.study-chat-phone{height:min(960px,calc(100svh - 24px));min-height:610px;border:11px solid var(--study-frame,#111);border-radius:47px;background:var(--study-frame,#111);box-shadow:0 28px 75px #1c365028;overflow:hidden;transition:border-color .25s,background-color .25s}
+.study-condition-A{--study-frame:#111111;--study-condition-ink:#fff}
+.study-condition-B{--study-frame:#2468e8;--study-condition-ink:#fff}
+.study-condition-C{--study-frame:#d3343f;--study-condition-ink:#fff}
+.study-condition-D{--study-frame:#aeb9c6;--study-condition-ink:#172a43}
 .study-chat-screen{height:100%;border-radius:35px;overflow:hidden;display:flex;flex-direction:column;background:#edf4fc}
 .study-chat-header{flex:none;background:#fff;border-bottom:1px solid #d9e4f2}
 .study-chat-status{display:flex;justify-content:space-between;padding:12px 23px 4px;font-weight:800;font-size:14px}
-.study-chat-heading{display:flex;align-items:center;gap:12px;padding:10px 20px 13px}.study-chat-heading>span{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#e8f1ff;font-size:24px}
+.study-chat-heading{display:flex;align-items:center;gap:12px;padding:10px 20px 13px}.study-chat-heading>span:first-child{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#e8f1ff;font-size:24px}
 .study-chat-heading strong,.study-chat-heading small{display:block}.study-chat-heading strong{font-size:19px}.study-chat-heading small{margin-top:3px;color:#6a83a1}
+.study-condition-tag{margin-left:auto;padding:8px 10px;border-radius:10px;background:var(--study-frame,#111);color:var(--study-condition-ink,#fff);font-size:12px;font-weight:800;white-space:nowrap}
 .study-clock{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:0 20px 12px;font-size:13px;color:#3d648f}.study-clock strong{color:#1667d3}.study-clock>div{height:7px;grid-column:1/-1;border-radius:20px;background:#e5edf8;overflow:hidden}.study-clock i{display:block;height:100%;background:#3985ee}
 .study-chat-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 18px 26px}
 .study-chat-divider{text-align:center;margin:16px auto;padding:8px 13px;width:fit-content;max-width:95%;border-radius:30px;background:#dce9f8;color:#42698f;font-weight:700;font-size:12px}.study-chat-divider.is-phase{background:#fff;color:#2069bf}
@@ -88,6 +93,9 @@ button, input { font: inherit; }
 .study-bubble.from-giver{margin-left:auto;background:#dfeeff;border-color:#bed8fb}.study-bubble b{color:#2571cf;font-size:12px}.study-bubble p{margin:8px 0 0;line-height:1.55;white-space:pre-wrap}
 .study-chat-control{padding:17px;margin:13px 0;border:1px solid #d6e4f6;border-radius:18px;background:#fff;line-height:1.5}
 .study-chat-control h3{font-size:16px;margin:0 0 8px}.study-chat-control p{color:#4b6683;margin:7px 0 12px}
+.study-basket-status{padding:10px 12px;margin:10px 0;border:1px solid #b7d4f6;border-radius:12px;background:#eef6ff;color:#1d5da5;font-size:13px}
+.study-basket-status ol{margin:5px 0 0;padding-left:20px}.study-basket-status li{margin:2px 0}
+.study-basket-confirmation{padding:8px 10px;border-radius:9px;background:#e9f8ed;color:#176534;font-weight:700}
 .study-chat-control form{display:grid;gap:8px}.study-chat-control textarea{width:100%;min-height:84px;resize:vertical;border:1px solid #c7d9f0;border-radius:12px;padding:12px;background:#fff;color:#1b304e}
 .study-chat-control label{display:block;font-size:13px;font-weight:700}.study-chat-control label textarea{margin-top:8px}
 .study-chat-control button,.study-chat-footer button,.study-product-action{border:0;border-radius:10px;background:#317ded;color:white;padding:11px 13px;font-weight:700;cursor:pointer}
@@ -109,7 +117,11 @@ button, input { font: inherit; }
 .study-detail>img{display:block;max-width:100%;max-height:230px;margin:0 auto;object-fit:contain}
 .study-detail h2{font-size:22px}.study-detail p{line-height:1.65;white-space:pre-wrap}.study-detail small{display:block;margin-top:15px;color:#647e9b}
 .study-detail-close{float:right;border:0;border-radius:9px;background:#e9f1fb;padding:9px 13px;cursor:pointer}
-@media(max-width:900px){.study-experience{display:block;padding:0}.study-side{display:none}.study-chat-phone{width:100%;height:100svh;min-height:0;border:0;border-radius:0;box-shadow:none}.study-chat-screen{border-radius:0}}
+.study-confirm-overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:18px;background:#142538ad}
+.study-confirm-dialog{width:min(100%,430px);padding:23px;border-radius:20px;background:#fff;box-shadow:0 22px 60px #10274444}
+.study-confirm-dialog h2{font-size:21px;margin:0 0 12px}.study-confirm-dialog p{line-height:1.55;color:#4b6683}.study-confirm-dialog p strong{color:#1b304e}
+.study-confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.study-confirm-actions button{border:0;border-radius:10px;padding:11px 14px;background:#317ded;color:#fff;font-weight:700;cursor:pointer}.study-confirm-actions .study-confirm-cancel{background:#e9f1fb;color:#315574}.study-confirm-actions button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:900px){.study-experience{display:block;padding:0}.study-side{display:none}.study-chat-phone{width:100%;height:100svh;min-height:0;border-width:6px;border-radius:0;box-shadow:none}.study-chat-screen{border-radius:0}}
 @media(max-width:520px){.study-chat-scroll{padding:16px 10px}.study-bubble{max-width:97%}.study-product-grid{gap:5px}.study-product-image{height:77px}.study-product-main{padding:5px}.study-product-name{font-size:11px}.study-product-reason{display:none}.study-chat-control{padding:12px}.study-footer-task{flex-wrap:wrap}.study-footer-task button{width:100%}}
 .study-comparison-scroll{max-width:100%;overflow-x:auto}
 .study-comparison{width:100%;min-width:440px;border-collapse:collapse;table-layout:fixed;font-size:11px;line-height:1.4}

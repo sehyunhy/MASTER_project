@@ -14,6 +14,7 @@ type Trial = { id: string; role: Role; condition: "A"|"B"|"C"|"D"; order_positio
   timeout_phase?: string | null; skipped_at?: string | null };
 type Message = { id: number; trial_id: string; phase: string; speaker: string; origin: string; kind: string;
   content: string; payload: Record<string, any> };
+type PendingCandidate = { trialId: string; requestKey: string; product: Product; slot: number };
 type State = { person: { enrollmentNumber: number; currentRole: string };
   trial: Trial; trials: Trial[]; messages: Message[]; profile: { name: string; gift_budget: number };
   aiConfigured: boolean };
@@ -47,11 +48,13 @@ export function Experiment({ role }: { role: Role }) {
   const [chosen,setChosen] = useState("");
   const [code,setCode] = useState("");
   const [detail,setDetail] = useState<Product|null>(null);
+  const [pendingCandidate,setPendingCandidate] = useState<PendingCandidate|null>(null);
   const [seconds,setSeconds] = useState(0);
   const [isVisible,setIsVisible] = useState(true);
   const tabId = useRef("");
   const automated = useRef("");
   const chatEnd = useRef<HTMLDivElement>(null);
+  const confirmCandidateButton = useRef<HTMLButtonElement>(null);
   const openAt = useRef(0);
   const detailDwellMs = useRef(0);
   const openedIds = useRef<Record<string,number>>({});
@@ -97,12 +100,28 @@ export function Experiment({ role }: { role: Role }) {
       }
       await refresh();
       if (type==="activate") setCode("");
+      return result;
     } catch (cause) {
       if (type==="candidatesVisible") markedVisible.current="";
       setError(cause instanceof Error ? cause.message : "오류가 발생했습니다.");
     }
     finally { setBusy(false); }
   },[busy,refresh,role,state]);
+
+  useEffect(() => { if (pendingCandidate) confirmCandidateButton.current?.focus(); },[pendingCandidate]);
+
+  const openCandidateConfirmation = (product:Product, requestKey:string, slot:number, trialId:string) => {
+    if (busy || !state || state.trial.id!==trialId || state.trial.proposal?.request_key!==requestKey) return;
+    setPendingCandidate({trialId,requestKey,product,slot});
+  };
+  const confirmCandidate = async () => {
+    const pending=pendingCandidate;
+    if (!pending || !state || busy || state.trial.id!==pending.trialId ||
+      state.trial.proposal?.request_key!==pending.requestKey) return;
+    await event("candidate_confirmation_attempt",{slot:pending.slot},pending.product.source_product_id);
+    const result=await action("confirmCandidate",{requestKey:pending.requestKey});
+    if (result?.confirmed) setPendingCandidate(null);
+  };
 
   const agentTask = useCallback(async (task:"one"|"batch"|"final", request?:string) => {
     if (!state || busy) return;
@@ -304,11 +323,11 @@ export function Experiment({ role }: { role: Role }) {
       <section><h2>시간 규칙</h2><p>한 조건의 후보 3개는 하나의 후보 단계에서 만듭니다. 후보 한 개마다 시간이 새로 시작하지 않습니다. 후보 단계와 최종 단계에 각각 유효 노출 60–180초를 적용합니다. 시간초과 시 미완료로 기록하고 다음 조건으로 진행할 수 있습니다.</p></section>
       <a href="/start">친구 화면으로</a>
     </aside>
-    <div className="study-chat-phone">
+    <div className={`study-chat-phone ${trial ? `study-condition-${trial.condition}` : ""}`}>
       <div className="study-chat-screen">
         <header className="study-chat-header">
           <div className="study-chat-status"><span>11:03</span><span>▥ ● ▰</span></div>
-          <div className="study-chat-heading"><span aria-hidden="true">🎁</span><div><strong>선물 상담</strong><small>{trial?.condition??"…"} · {phaseTitle}</small></div></div>
+          <div className="study-chat-heading"><span aria-hidden="true">🎁</span><div><strong>선물 상담</strong><small>{phaseTitle}</small></div><span className="study-condition-tag">조건 {trial?.condition??"…"} · {trial?.order_position??"…"}/4</span></div>
           {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{trial.phase==="candidates"?"후보 3개 전체 단계":"최종 선택 단계"} · {!isVisible?"일시정지":minReady?"최소 확인 완료":`${60-seconds}초 후 다음 단계 가능`}</span><strong>{remaining}초 남음</strong><div><i style={{width:`${Math.min(100,seconds/180*100)}%`}} /></div></div>}
         </header>
         <div className="study-chat-scroll">
@@ -321,17 +340,21 @@ export function Experiment({ role }: { role: Role }) {
               <div key={message.id} className={`study-bubble ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
                 <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b>
                 <p>{message.content}</p>
+                {message.kind==="candidate_confirmed" && message.payload?.product &&
+                  <p className="study-basket-confirmation">✓ {message.payload.product.name_ko}이(가) 후보에 담겼습니다.</p>}
                 {message.kind==="candidate_proposal" && message.payload?.product && <ProductCard product={message.payload.product} onOpen={openProduct}
                   action={item.id===trial?.id && item.phase==="candidates" && role==="giver" &&
                     item.candidate_builder==="human" && item.proposal?.request_key===message.payload?.request_key
-                    ? {label:`이 상품을 후보 ${currentCount+1}로 선택·확정`,run:()=>void action("confirmCandidate",{requestKey:item.proposal!.request_key})}
+                    ? {label:`후보 ${currentCount+1}에 담기`,run:()=>openCandidateConfirmation(message.payload.product,item.proposal!.request_key,currentCount+1,item.id)}
                     : undefined} disabled={busy} />}
                 {message.kind==="candidate_batch" && <div className="study-product-grid">{(message.payload?.candidates??[]).map((product:Product)=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div>}
               </div>)}
             {item.id===trial?.id && item.phase==="candidates" && <>
               {role==="giver" && item.candidate_builder==="human" && <div className="study-chat-control">
                 <h3>후보 {Math.min(3,currentCount+1)} / 3</h3>
-                {item.proposal ? <p>제안된 상품을 후보로 선택하려면 상품 카드 아래의 파란 버튼을 눌러 주세요. 다른 상품을 원하면 요청을 고쳐 다시 보내세요.</p>
+                <div className="study-basket-status" aria-live="polite"><strong>담긴 후보 {item.candidate_snapshots.length}/3</strong>
+                  {item.candidate_snapshots.length>0 && <ol>{item.candidate_snapshots.map(product=><li key={product.source_product_id}>{product.name_ko}</li>)}</ol>}</div>
+                {item.proposal ? <p>상품 카드에서 ‘후보에 담기’를 누른 뒤 확인해 주세요. 다른 상품을 원하면 요청을 고쳐 다시 보내세요.</p>
                 : currentCount<3 ? <p>이번 후보에서 찾고 싶은 상품이나 사용 상황을 자유롭게 적어 주세요.</p> : <p>후보 세 개를 확정했습니다.</p>}
                 {currentCount<3 && <form onSubmit={e=>{e.preventDefault();void submitPrompt();}}>
                   <textarea aria-label="이번 후보에 대한 요청" value={draft} onChange={e=>onDraft(e.target.value)}
@@ -383,7 +406,7 @@ export function Experiment({ role }: { role: Role }) {
             <button disabled={busy||!code} onClick={()=>void action("activate",{code})}>조건 {trial.condition} 시작</button></div>}
           {trial?.phase==="candidates" && <div className="study-footer-task"><span>후보 {currentCount}/3 · 전체 후보 단계 유효 {seconds}/60초 이상</span>
             {role==="giver" && trial.candidate_builder==="human" && trial.proposal &&
-              <button disabled={busy} onClick={()=>void action("confirmCandidate",{requestKey:trial.proposal!.request_key})}>제안된 상품을 후보 {currentCount+1}로 선택·확정</button>}
+              <button disabled={busy} onClick={()=>openCandidateConfirmation(trial.proposal!.product,trial.proposal!.request_key,currentCount+1,trial.id)}>제안된 상품을 후보 {currentCount+1}에 담기</button>}
             <button disabled={busy||!minReady||currentCount!==3} onClick={()=>void action("advance")}>최종 단계로 이동</button></div>}
           {trial?.phase==="decision" && <div className="study-footer-task"><span>결과 확인 · 유효 {seconds}/60초 이상</span>
             <button disabled={busy||!minReady||!trial.final_product_id} onClick={()=>void action("advance")}>종이 설문으로 이동</button></div>}
@@ -396,6 +419,17 @@ export function Experiment({ role }: { role: Role }) {
         </footer>
       </div>
     </div>
+    {pendingCandidate && trial?.id===pendingCandidate.trialId && trial.proposal?.request_key===pendingCandidate.requestKey &&
+      <div className="study-confirm-overlay" role="presentation">
+        <div className="study-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="study-confirm-title" onKeyDown={e=>{if(e.key==="Escape")setPendingCandidate(null);}}>
+          <h2 id="study-confirm-title">이 상품을 후보에 담으시겠습니까?</h2>
+          <p><strong>{pendingCandidate.product.name_ko}</strong>을(를) 후보 {pendingCandidate.slot}/3에 담습니다.</p>
+          <p>담은 뒤에는 다음 후보를 요청할 수 있습니다. 최종 선물은 세 후보를 모은 뒤 결정합니다.</p>
+          <div className="study-confirm-actions"><button type="button" className="study-confirm-cancel" disabled={busy} onClick={()=>setPendingCandidate(null)}>아니요, 다시 보기</button>
+            <button type="button" ref={confirmCandidateButton} disabled={busy} onClick={()=>void confirmCandidate()}>{busy?"담는 중…":`네, 후보 ${pendingCandidate.slot}에 담기`}</button></div>
+          {error && <p className="study-chat-error" role="alert">{error}</p>}
+        </div>
+      </div>}
     {detail && <div className="study-detail-overlay" role="dialog" aria-modal="true" aria-label={detail.name_ko}>
       <div className="study-detail"><button type="button" className="study-detail-close" onClick={closeProduct}>닫기 ×</button>
         {detail.image_url && <img src={detail.image_url} alt="" />}
