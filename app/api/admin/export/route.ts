@@ -48,7 +48,8 @@ function metricRows(trials:any[],events:any[],people:any[]) {
       .reduce((sum,event)=>sum+Number(event.payload?.latency_ms||0),0);
     const person=personById.get(trial.person_id);
     return {
-      person_id:trial.person_id,enrollment_number:person?.enrollment_number??null,
+      person_id:trial.person_id,participant_number:trial.participant_number??person?.participant_number??null,
+      enrollment_number:person?.enrollment_number??null,
       enrollment_block:person?.enrollment_block??null,condition_order:person?.condition_order??null,
       role:trial.role,role_code:trial.role==="giver"?"P01":"P02",
       trial_id:trial.id,condition:trial.condition,order_position:trial.order_position,

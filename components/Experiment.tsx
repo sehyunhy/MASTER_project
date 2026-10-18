@@ -15,7 +15,7 @@ type Trial = { id: string; role: Role; condition: "A"|"B"|"C"|"D"; order_positio
 type Message = { id: number; trial_id: string; phase: string; speaker: string; origin: string; kind: string;
   content: string; payload: Record<string, any> };
 type PendingCandidate = { trialId: string; requestKey: string; product: Product; slot: number };
-type State = { person: { enrollmentNumber: number; currentRole: string };
+type State = { person: { participantNumber:string; enrollmentNumber: number; currentRole: string };
   trial: Trial; trials: Trial[]; messages: Message[]; profile: { name: string; gift_budget: number };
   aiConfigured: boolean };
 const conditionLabel: Record<string,string> = {
@@ -67,6 +67,7 @@ export function Experiment({ role }: { role: Role }) {
   const markedVisible = useRef("");
   const scriptedSent = useRef<Set<number>>(new Set());
   const viewedPhase = useRef("");
+  const activeTrial = useRef("");
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/experiment/current?role="+role, { cache: "no-store" });
@@ -145,6 +146,20 @@ export function Experiment({ role }: { role: Role }) {
     refresh().then(() => { if(alive) setError(""); }).catch(cause => { if(alive) setError(cause.message); });
     return () => {alive=false;};
   },[refresh]);
+
+  useEffect(() => {
+    const trialId=state?.trial.id;
+    if (!trialId || activeTrial.current===trialId) return;
+    activeTrial.current=trialId;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (reasonTimer.current) clearTimeout(reasonTimer.current);
+    draftTimer.current=null;reasonTimer.current=null;
+    setDraft("");setReason("");setChosen("");setCode("");
+    setDetail(null);setPendingCandidate(null);setError("");
+    draftStarted.current=false;reasonStarted.current=false;
+    openedIds.current={};openAt.current=0;detailDwellMs.current=0;
+    automated.current="";markedVisible.current="";scriptedSent.current.clear();
+  },[state?.trial.id]);
 
   useEffect(() => {
     if (state?.trial.id && viewedTrial.current!==state.trial.id) {
@@ -317,7 +332,7 @@ export function Experiment({ role }: { role: Role }) {
   return <main className="study-experience">
     <aside className="study-side">
       <h1>🎁 선물 선택 연구</h1>
-      <p>{role==="giver"?"선물 주는 사람 · P01":"선물 받는 사람 · P02"} · 참가자 #{state?.person.enrollmentNumber??"…"}</p>
+      <p>{role==="giver"?"선물 주는 사람 · P01":"선물 받는 사람 · P02"} · 참가번호 {state?.person.participantNumber??"…"}</p>
       <section><h2>진행 안내</h2><p>{role==="giver"?`종이 자료 ${trial?.profile_code??"…"} · ${state?.profile.name??"…"}`:"친구 A · 당신의 생일 선물"}</p><p>{role==="giver"?"종이로 받은 선물 대상 자료를 읽어 주세요. 상품 후보와 Agent 대화는 오른쪽 화면에서 진행합니다.":"네 상황은 같은 친구가 같은 생일 선물을 준비하는 장면입니다. 선물을 고르는 방식만 달라집니다. 화면 속 친구 A의 행동은 연구자가 구성한 시나리오입니다."}</p></section>
       <section><h2>현재 조건</h2><strong>{trial?.condition??"…"} · {trial ? conditionLabel[trial.condition] : ""}</strong><p>{trial?.order_position??"…"} / 4조건</p></section>
       <section><h2>시간 규칙</h2><p>한 조건의 후보 3개는 하나의 후보 단계에서 만듭니다. 후보 한 개마다 시간이 새로 시작하지 않습니다. 후보 단계와 최종 단계에 각각 유효 노출 60–180초를 적용합니다. 시간초과 시 미완료로 기록하고 다음 조건으로 진행할 수 있습니다.</p></section>
@@ -330,7 +345,7 @@ export function Experiment({ role }: { role: Role }) {
           <div className="study-chat-heading"><span aria-hidden="true">🎁</span><div><strong>선물 상담</strong><small>{phaseTitle}</small></div><span className="study-condition-tag">조건 {trial?.condition??"…"} · {trial?.order_position??"…"}/4</span></div>
           {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{trial.phase==="candidates"?"후보 3개 전체 단계":"최종 선택 단계"} · {!isVisible?"일시정지":minReady?"최소 확인 완료":`${60-seconds}초 후 다음 단계 가능`}</span><strong>{remaining}초 남음</strong><div><i style={{width:`${Math.min(100,seconds/180*100)}%`}} /></div></div>}
         </header>
-        <div className="study-chat-scroll">
+        <div className="study-chat-scroll" key={trial?.id}>
           {!state && <p className="study-chat-notice">연구 상태를 불러오는 중입니다.</p>}
           {state && <div className="study-chat-divider">{role==="giver"?`종이 자료 ${trial?.profile_code} · ${state.profile.name} 확인 · 예산 ${state.profile.gift_budget.toLocaleString()}원`:"당신의 생일 · 친구 A · 네 상황에서 같은 선물"}</div>}
           {visibleTrials.map(item => <div key={item.id}>

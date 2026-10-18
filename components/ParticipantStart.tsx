@@ -13,8 +13,14 @@ export function ParticipantStart() {
   const [busy, setBusy] = useState(false);
   const [newParticipant, setNewParticipant] = useState(false);
   const [canStartNew, setCanStartNew] = useState(false);
+  const [participantNumber, setParticipantNumber] = useState("");
   async function enterExperiment(startNew = newParticipant) {
     if (busy) return;
+    const number=participantNumber.trim().toUpperCase();
+    if (!/^[A-Z0-9-]{1,12}$/.test(number)) {
+      setError("참가번호를 입력해 주세요. 영문 대문자·숫자·하이픈을 12자 이내로 사용할 수 있습니다.");
+      return;
+    }
     setBusy(true); setError(""); setCanStartNew(false);
     try {
       const browserKey = startNew
@@ -23,7 +29,7 @@ export function ParticipantStart() {
       if (startNew) sessionStorage.setItem("study-pending-new-browser-key",browserKey);
       else localStorage.setItem("study-browser-key",browserKey);
       const response = await fetch("/api/participant/start", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role, browserKey, newParticipant:startNew }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role, browserKey, newParticipant:startNew,participantNumber:number }),
       });
       const result = await response.json();
       if (!response.ok) {
@@ -50,7 +56,12 @@ export function ParticipantStart() {
         <button type="button" aria-pressed={role === "giver"} className={role === "giver" ? "is-active" : ""} onClick={() => { if(role!=="giver") sessionStorage.removeItem("study-pending-new-browser-key"); setRole("giver"); setScreen("friends"); setError(""); setCanStartNew(false); }}>{ROLE_CODES.giver} · 선물 주는 사람</button>
         <button type="button" aria-pressed={role === "recipient"} className={role === "recipient" ? "is-active" : ""} onClick={() => { if(role!=="recipient") sessionStorage.removeItem("study-pending-new-browser-key"); setRole("recipient"); setScreen("friends"); setError(""); setCanStartNew(false); }}>{ROLE_CODES.recipient} · 선물 받는 사람</button>
       </div>
-      <p className="study-entry-help">P01과 P02는 역할 표시입니다. 참가자 번호나 관계의 친밀도를 뜻하지 않습니다. 참가자 ID는 시작할 때 자동으로 발급됩니다.</p>
+      <p className="study-entry-help">P01과 P02는 역할 표시입니다. 관계의 친밀도를 뜻하지 않습니다. 같은 사람이 두 역할을 할 때는 같은 참가번호를 입력해 주세요.</p>
+      <label className="study-participant-number">참가번호
+        <input className="field" type="text" autoComplete="off" maxLength={12}
+          placeholder="예: 001 또는 N001" value={participantNumber}
+          onChange={event=>{setParticipantNumber(event.target.value.toUpperCase());setError("");}} />
+      </label>
       <div className="study-entry-divider" />
       <dl className="study-entry-facts"><div><dt>현재 역할</dt><dd>{roleLabel}</dd></div><div><dt>현재 화면</dt><dd>{screen === "friends" ? "친구 목록" : "선물 받을 사람 프로필"}</dd></div><div><dt>실험 조건</dt><dd>네 조건 모두 체험</dd></div></dl>
       <h2>진행 순서</h2>
@@ -60,7 +71,7 @@ export function ParticipantStart() {
         onClick={() => { if(newParticipant) sessionStorage.removeItem("study-pending-new-browser-key"); setNewParticipant(value => !value); setError(""); setCanStartNew(false); }}>
         {newParticipant ? "새 참가자 시작 선택됨 · 취소" : "새 참가자로 시작"}
       </button>
-      {newParticipant && <p className="study-entry-help">새 참가자에게 별도 ID를 발급합니다. 이전 참가자가 진행 중이면 기록을 보존하고 미완료로 종료합니다.</p>}
+      {newParticipant && <p className="study-entry-help">새 참가자의 참가번호를 입력해 주세요. 이전 참가자가 진행 중이면 기록을 보존하고 미완료로 종료합니다.</p>}
       {error && <p className="study-entry-error" role="alert">{error}</p>}
       {canStartNew && <button type="button" className="study-next-person" disabled={busy}
         onClick={() => { setNewParticipant(true); void enterExperiment(true); }}>새 참가자 {ROLE_CODES[role]}로 시작</button>}

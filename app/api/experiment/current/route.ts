@@ -9,23 +9,16 @@ export async function GET(request: Request) {
     if (role !== "giver" && role !== "recipient") return NextResponse.json({ error: "역할을 선택해 주세요." }, { status: 400 });
     const { db, person } = await studySession(role);
     const { trial, trials } = await trialFor(db, person.id, role);
-    const visible = trials.filter((item: any) => item.order_position <= trial.order_position);
-    const ids = visible.map((item: any) => item.id);
-    const { data: messages, error } = await db.from("study_messages").select("*").in("trial_id", ids).order("id");
+    const { data: messages, error } = await db.from("study_messages").select("*").eq("trial_id",trial.id).order("id");
     if (error) throw error;
     const profile = role === "recipient" ? RECIPIENT_SEARCH_PROFILE : profileFor(trial.profile_code);
     if (!profile) throw new Error("PROFILE_MISSING");
-    const currentMessages = role === "recipient" ? (messages ?? []).filter((message: any) => {
-      const owner = visible.find((item: any) => item.id === message.trial_id);
-      return owner && visibleRecipientMessages([message], owner).length === 1;
-    }) : messages ?? [];
+    const currentMessages = role === "recipient" ? visibleRecipientMessages(messages??[],trial) : messages ?? [];
     const safeTrial = role === "recipient" ? visibleRecipientTrial(trial,currentMessages) : trial;
-    const safeTrials = visible.map((item: any) => item.id === trial.id ? safeTrial
-      : role === "recipient" ? visibleRecipientTrial(item,currentMessages) : item);
     return NextResponse.json({
-      person: { id: person.id, enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
+      person: { id: person.id, participantNumber:person.participant_number,enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
         conditionOrder: person.condition_order, enrollmentBlock: person.enrollment_block, currentRole: person.active_role },
-      trial: safeTrial, trials: safeTrials, messages: currentMessages, profile,
+      trial: safeTrial, trials: [safeTrial], messages: currentMessages, profile,
       aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     });
   } catch (cause) {

@@ -1,7 +1,6 @@
 -- New study only. Run in Supabase SQL Editor when ready to erase ALL prior
 -- participant, stimulus, event and product rows. This does not migrate
--- or import any old DB records. Product rows are seeded separately from the
--- Previous CSV products are not part of the active live-search setup.
+-- or import any old DB records. Products are collected by live search.
 -- A failed statement rolls back the complete reset.
 begin;
 create extension if not exists pgcrypto;
@@ -30,7 +29,7 @@ begin
       'phase_content_ready','phase_heartbeat','v6_advance_phase','v6_complete_role_session',
       'v6_confirm_candidate','v6_confirm_trial_intro','v6_enroll_subject','v6_finalize_selection',
       'v6_phase_heartbeat','v6_phase_ready','v6_verify_transition_code',
-      'study_activate','study_advance','study_attach_stimulus','study_claim_agent',
+      'study_activate','study_advance','study_assign_participant_number','study_attach_stimulus','study_claim_agent',
       'study_begin_new_person','study_confirm_candidate','study_enroll','study_finalize','study_finish_survey',
       'study_skip_timed_out',
       'study_mark_candidates_visible','study_ping','study_release_agent',
@@ -43,6 +42,7 @@ end; $$;
 
 create table public.study_people (
   id uuid primary key default gen_random_uuid(),
+  participant_number text not null unique,
   enrollment_number bigint generated always as identity unique,
   browser_key uuid not null unique,
   first_role text not null check(first_role in ('giver','recipient')),
@@ -54,7 +54,9 @@ create table public.study_people (
   profile_code text not null,
   status text not null default 'active' check(status in ('active','completed','withdrawn')),
   created_at timestamptz not null default clock_timestamp(),
-  updated_at timestamptz not null default clock_timestamp()
+  updated_at timestamptz not null default clock_timestamp(),
+  constraint study_people_participant_number_format
+    check(participant_number ~ '^[A-Z0-9-]{1,12}$')
 );
 
 create table public.study_products (
@@ -91,6 +93,7 @@ create table public.study_stimuli (
 create table public.study_trials (
   id uuid primary key default gen_random_uuid(),
   person_id uuid not null references public.study_people(id) on delete cascade,
+  participant_number text not null,
   role text not null check(role in ('giver','recipient')),
   order_position smallint not null check(order_position between 1 and 4),
   condition text not null check(condition in ('A','B','C','D')),
@@ -134,6 +137,7 @@ create table public.study_trials (
 create table public.study_messages (
   id bigint generated always as identity primary key,
   trial_id uuid not null references public.study_trials(id) on delete cascade,
+  participant_number text not null,
   phase text not null,
   speaker text not null check(speaker in ('participant','agent','scripted_giver','system')),
   origin text not null check(origin in ('participant','agent','scripted','system')),
@@ -148,6 +152,7 @@ create table public.study_messages (
 create table public.study_events (
   id bigint generated always as identity primary key,
   person_id uuid not null references public.study_people(id) on delete cascade,
+  participant_number text not null,
   trial_id uuid references public.study_trials(id) on delete cascade,
   role text,
   condition text,
@@ -169,6 +174,9 @@ create unique index study_scripted_message_once on public.study_events(trial_id,
 create index study_events_timeline on public.study_events(trial_id,server_at,id);
 create index study_messages_timeline on public.study_messages(trial_id,id);
 create index study_trials_person on public.study_trials(person_id,role,order_position);
+create index study_trials_participant_number on public.study_trials(participant_number,role,order_position);
+create index study_messages_participant_number on public.study_messages(participant_number,id);
+create index study_events_participant_number on public.study_events(participant_number,server_at,id);
 create index study_products_profiles on public.study_products using gin(profile_codes);
 
 alter table public.study_people enable row level security;
@@ -180,18 +188,47 @@ alter table public.study_events enable row level security;
 -- No browser grants. The application validates its signed session and uses
 -- the server-only service role key.
 
-create function public.study_enroll(p_role text,p_browser_key uuid)
+create function public.study_assign_participant_number()
+returns trigger language plpgsql security definer set search_path=public as $$
+begin
+  if tg_table_name='study_trials' then
+    new.participant_number := (select participant_number from public.study_people where id=new.person_id);
+  elsif tg_table_name='study_messages' then
+    new.participant_number := (select participant_number from public.study_trials where id=new.trial_id);
+  elsif tg_table_name='study_events' then
+    new.participant_number := (select participant_number from public.study_people where id=new.person_id);
+  end if;
+  if new.participant_number is null then raise exception 'PARTICIPANT_NUMBER_MISSING'; end if;
+  return new;
+end; $$;
+create trigger study_trials_participant_number before insert or update on public.study_trials
+  for each row execute function public.study_assign_participant_number();
+create trigger study_messages_participant_number before insert or update on public.study_messages
+  for each row execute function public.study_assign_participant_number();
+create trigger study_events_participant_number before insert or update on public.study_events
+  for each row execute function public.study_assign_participant_number();
+
+create function public.study_enroll(p_role text,p_browser_key uuid,p_participant_number text)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare p public.study_people%rowtype; block_index bigint; within_block integer; sequence_index integer;
-  sequence_value text[]; second_role text; role_name text; item text; pos integer;
+  sequence_value text[]; role_name text; item text; pos integer;
 begin
-  if p_role not in ('giver','recipient') or p_browser_key is null then raise exception 'INVALID_ENROLLMENT'; end if;
+  p_participant_number:=upper(trim(p_participant_number));
+  if p_role not in ('giver','recipient') or p_browser_key is null
+    or p_participant_number is null or p_participant_number !~ '^[A-Z0-9-]{1,12}$'
+    then raise exception 'INVALID_ENROLLMENT'; end if;
   perform pg_advisory_xact_lock(hashtext('study-enrollment'));
   select * into p from public.study_people where browser_key=p_browser_key;
-  if found then return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'active_role',p.active_role); end if;
-  insert into public.study_people(browser_key,first_role,active_role,role_order,
+  if found then
+    if p.participant_number<>p_participant_number then raise exception 'PARTICIPANT_NUMBER_MISMATCH'; end if;
+    return jsonb_build_object('person_id',p.id,'participant_number',p.participant_number,
+      'enrollment_number',p.enrollment_number,'active_role',p.active_role);
+  end if;
+  if exists(select 1 from public.study_people where participant_number=p_participant_number)
+    then raise exception 'PARTICIPANT_NUMBER_TAKEN'; end if;
+  insert into public.study_people(participant_number,browser_key,first_role,active_role,role_order,
     condition_order,order_index,enrollment_block,profile_code)
-  values(p_browser_key,p_role,p_role,array[p_role,case when p_role='giver' then 'recipient' else 'giver' end],
+  values(p_participant_number,p_browser_key,p_role,p_role,array[p_role,case when p_role='giver' then 'recipient' else 'giver' end],
     array['A','C','D','B'],0,1,'R1') returning * into p;
   block_index:=(p.enrollment_number-1)/5;
   within_block:=((p.enrollment_number-1)%5)::integer;
@@ -215,10 +252,11 @@ begin
   end loop;
   insert into public.study_events(person_id,role,actor,origin,event_type,payload)
   values(p.id,p_role,'system','system','enrolled',jsonb_build_object('block',p.enrollment_block,'order',p.condition_order));
-  return jsonb_build_object('person_id',p.id,'enrollment_number',p.enrollment_number,'active_role',p.active_role);
+  return jsonb_build_object('person_id',p.id,'participant_number',p.participant_number,
+    'enrollment_number',p.enrollment_number,'active_role',p.active_role);
 end; $$;
 
-create function public.study_begin_new_person(p_previous_id uuid,p_role text,p_browser_key uuid)
+create function public.study_begin_new_person(p_previous_id uuid,p_role text,p_browser_key uuid,p_participant_number text)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare previous public.study_people%rowtype; enrolled jsonb; next_id uuid; now_at timestamptz:=clock_timestamp();
 begin
@@ -226,7 +264,7 @@ begin
   if p_previous_id is not null then
     select * into previous from public.study_people where id=p_previous_id for update;
   end if;
-  enrolled:=public.study_enroll(p_role,p_browser_key);
+  enrolled:=public.study_enroll(p_role,p_browser_key,p_participant_number);
   next_id:=(enrolled->>'person_id')::uuid;
   if previous.id is not null and previous.id<>next_id and previous.status='active' then
     update public.study_people set status='withdrawn',updated_at=now_at where id=previous.id;
@@ -609,8 +647,9 @@ begin
   return jsonb_build_object('attached',true);
 end; $$;
 
-revoke all on function public.study_enroll(text,uuid) from public,anon,authenticated;
-revoke all on function public.study_begin_new_person(uuid,text,uuid) from public,anon,authenticated;
+revoke all on function public.study_enroll(text,uuid,text) from public,anon,authenticated;
+revoke all on function public.study_begin_new_person(uuid,text,uuid,text) from public,anon,authenticated;
+revoke all on function public.study_assign_participant_number() from public,anon,authenticated;
 revoke all on function public.study_activate(uuid,uuid,text,uuid) from public,anon,authenticated;
 revoke all on function public.study_ping(uuid,text,bigint,boolean) from public,anon,authenticated;
 revoke all on function public.study_mark_candidates_visible(uuid,uuid) from public,anon,authenticated;
@@ -624,8 +663,8 @@ revoke all on function public.study_confirm_candidate(uuid,uuid,uuid,uuid) from 
 revoke all on function public.study_store_batch(uuid,uuid,uuid,text[],jsonb,text,text,text,integer,jsonb) from public,anon,authenticated;
 revoke all on function public.study_finalize(uuid,uuid,text,text,text,uuid,text,text,integer,text,text) from public,anon,authenticated;
 revoke all on function public.study_attach_stimulus(uuid,uuid) from public,anon,authenticated;
-grant execute on function public.study_enroll(text,uuid) to service_role;
-grant execute on function public.study_begin_new_person(uuid,text,uuid) to service_role;
+grant execute on function public.study_enroll(text,uuid,text) to service_role;
+grant execute on function public.study_begin_new_person(uuid,text,uuid,text) to service_role;
 grant execute on function public.study_activate(uuid,uuid,text,uuid) to service_role;
 grant execute on function public.study_ping(uuid,text,bigint,boolean) to service_role;
 grant execute on function public.study_mark_candidates_visible(uuid,uuid) to service_role;
@@ -640,3 +679,4 @@ grant execute on function public.study_store_batch(uuid,uuid,uuid,text[],jsonb,t
 grant execute on function public.study_finalize(uuid,uuid,text,text,text,uuid,text,text,integer,text,text) to service_role;
 grant execute on function public.study_attach_stimulus(uuid,uuid) to service_role;
 commit;
+notify pgrst, 'reload schema';
