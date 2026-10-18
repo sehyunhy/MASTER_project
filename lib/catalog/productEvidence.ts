@@ -12,9 +12,9 @@ type EvidenceGuide = {
 };
 
 const guides: Record<string, EvidenceGuide> = {
-  "3440558193": { interests:["스킨케어","일상 관리"], purpose:"세안 후 바르는 스킨케어", practicalUse:"세안 후 아침이나 저녁의 관리 과정에 사용할 수 있습니다.", emotionalInterpretation:"상대가 집에서 보내는 스킨케어 시간을 떠올려 고른 선물이라는 뜻을 전할 수 있습니다.", distinction:"1온스 비타민 C 세럼이며 원본에 향료를 넣지 않았다고 기재된 점", consideration:"개인의 피부에 맞는지는 상품 기록만으로 확인할 수 없습니다.", bestCriterion:"취향 적합성" },
-  "46280772": { interests:["스킨케어","일상 관리"], purpose:"매일 쓰는 손 관리", practicalUse:"건조한 손에 바르는 일상용 제품으로 소개되어 있습니다.", emotionalInterpretation:"상대의 일상적인 손 관리에 관심을 기울였다는 뜻을 전할 수 있습니다.", distinction:"3온스 핸드크림으로 원본에 매일 쓰는 용도가 소개된 점", consideration:"개인의 피부에 맞는지는 상품 기록만으로 확인할 수 없습니다.", bestCriterion:"실용성" },
-  "2010024322": { interests:["스킨케어","일상 관리","세정"], purpose:"집에서 하는 세정", practicalUse:"집에서 사용하는 바디워시로 살펴볼 수 있습니다.", emotionalInterpretation:"상대의 집에서의 일상 관리에 맞춰 고른 선물이라는 뜻을 전할 수 있습니다.", distinction:"20온스 바디워시이며 워터멜론·피오니 향이 표기된 점", consideration:"향이 있는 제품이므로 향 선호와 개인의 피부 적합성은 별도로 확인해야 합니다.", bestCriterion:"실용성" },
+  "3440558193": { interests:["스킨케어","피부 관리","일상 관리"], purpose:"세안 후 바르는 스킨케어", practicalUse:"세안 후 아침이나 저녁의 관리 과정에 사용할 수 있습니다.", emotionalInterpretation:"상대가 집에서 보내는 스킨케어 시간을 떠올려 고른 선물이라는 뜻을 전할 수 있습니다.", distinction:"1온스 비타민 C 세럼이며 원본에 향료를 넣지 않았다고 기재된 점", consideration:"개인의 피부에 맞는지는 상품 기록만으로 확인할 수 없습니다.", bestCriterion:"취향 적합성" },
+  "46280772": { interests:["스킨케어","피부 관리","일상 관리"], purpose:"매일 쓰는 손 관리", practicalUse:"건조한 손에 바르는 일상용 제품으로 소개되어 있습니다.", emotionalInterpretation:"상대의 일상적인 손 관리에 관심을 기울였다는 뜻을 전할 수 있습니다.", distinction:"3온스 핸드크림으로 원본에 매일 쓰는 용도가 소개된 점", consideration:"개인의 피부에 맞는지는 상품 기록만으로 확인할 수 없습니다.", bestCriterion:"실용성" },
+  "2010024322": { interests:["스킨케어","피부 관리","일상 관리","세정"], purpose:"집에서 하는 세정", practicalUse:"집에서 사용하는 바디워시로 살펴볼 수 있습니다.", emotionalInterpretation:"상대의 집에서의 일상 관리에 맞춰 고른 선물이라는 뜻을 전할 수 있습니다.", distinction:"20온스 바디워시이며 워터멜론·피오니 향이 표기된 점", consideration:"향이 있는 제품이므로 향 선호와 개인의 피부 적합성은 별도로 확인해야 합니다.", bestCriterion:"실용성" },
   "1093743201": { interests:["집에서 쉬는 시간","독서","휴식"], purpose:"집에서 쉬는 시간", practicalUse:"킹사이즈 침대용 담요로 사용할 수 있다고 소개되어 있습니다.", emotionalInterpretation:"상대의 집에서 쉬는 시간을 고려했다는 뜻을 전할 수 있습니다.", distinction:"킹사이즈 침대용이며 양면의 무늬와 촉감 구성이 소개된 점", consideration:"사용할 침대나 공간에 킹사이즈가 맞는지 확인해야 합니다.", bestCriterion:"실용성" },
   "1097677016": { interests:["집에서 쉬는 시간","독서","패브릭"], purpose:"집에서 쓰는 침구 소품", practicalUse:"20×30인치 베갯잇 두 장을 침구에 사용할 수 있습니다.", emotionalInterpretation:"상대가 집에서 보내는 시간을 떠올려 고른 침구 선물이라는 뜻을 전할 수 있습니다.", distinction:"면 100% 베갯잇 두 장으로 구성된 점", consideration:"사용 중인 베개와 20×30인치 크기가 맞는지 확인해야 합니다.", bestCriterion:"실용성" },
   "891036133": { interests:["집에서 쉬는 시간","독서","패브릭"], purpose:"집 안 패브릭 소품", practicalUse:"16×16인치 쿠션 커버로 집 안의 기존 쿠션에 사용할 수 있습니다.", emotionalInterpretation:"상대가 집에서 쉬는 공간을 떠올려 고른 소품이라는 뜻을 전할 수 있습니다.", distinction:"앞면의 터프팅 무늬와 술 장식이 있는 16×16인치 커버인 점", consideration:"기존 쿠션의 크기가 맞는지 확인해야 합니다. 커버 외 구성품은 원본 기록을 확인해 주세요.", bestCriterion:"취향 적합성" },
@@ -124,12 +124,13 @@ export function buildProductRecommendation(candidate: CandidateLike, allCandidat
   const connection = guide && interest
     ? `해석: ${name}님의 ${interest} 관심사와 연결됩니다. ${guide.practicalUse}`
     : recordedUse ? `연구용 상품 기록의 연결 설명: ${recordedUse}` : "현재 제공된 관심사와 이 상품의 직접적인 연결은 확인되지 않습니다.";
+  const toolPreferenceMismatch = context.profile?.profile_code === "R4v3" && ["10308385","36995775","864008591"].includes(text(product.source_product_id));
   return {
     headline: guide ? `${guide.bestCriterion} 기준 · ${firstFact}` : "원본 상품 정보를 확인한 뒤 적합성을 판단할 후보",
     recipientConnection: connection,
     productEvidence: `원본 정보: ${facts.slice(0, 2).join(" ")}`,
     comparativeStrength: comparisonPoint(candidate, allCandidates, guide),
-    consideration: guide?.consideration ?? "원본 기록에 없는 사용 조건과 개인의 선호 적합성은 확인이 필요합니다.",
+    consideration: `${guide?.consideration ?? "원본 기록에 없는 사용 조건과 개인의 선호 적합성은 확인이 필요합니다."}${toolPreferenceMismatch ? " 이 상품은 현우가 선호한다고 제시된 반복 사용 조리 도구가 아니므로, 해당 선호와의 차이도 살펴봐야 합니다." : ""}`,
   };
 }
 

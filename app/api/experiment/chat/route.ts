@@ -29,17 +29,21 @@ export async function POST(request:Request){
     const db=supabaseAdmin();
     const [{data:person},{data:trial}]=await Promise.all([
       db.from("participants").select("id,role,participant_code").eq("id",input.participantId).single(),
-      db.from("trials").select("id,participant_id,profile_id,scenario_id,current_phase,status,execution_autonomy,decision_authority,experiment_version,stimulus_version").eq("id",input.trialId).eq("participant_id",input.participantId).single(),
+      db.from("trials").select("id,participant_id,profile_id,scenario_id,current_phase,status,candidate_builder,execution_autonomy,decision_authority,experiment_version,stimulus_version").eq("id",input.trialId).eq("participant_id",input.participantId).single(),
     ]);
     if(!person||person.role!=="giver"||!trial||trial.experiment_version!==EXPERIMENT.version)return NextResponse.json({error:"이 대화는 현재 선물 주는 사람 실험에서만 사용할 수 있습니다."},{status:403});
     const {data:priorReply}=await db.from("trial_messages").select("content,payload").eq("trial_id",trial.id).eq("idempotency_key","chat-reply:"+input.idempotencyKey).maybeSingle();
     if(priorReply)return NextResponse.json({ok:true,response:priorReply.content,...priorReply.payload,idempotent:true});
     const phase=trial.current_phase;
-    if(!["criteria","candidates","comparison","decision"].includes(phase)||trial.status==="completed")return NextResponse.json({error:"현재 단계에서는 대화를 입력할 수 없습니다."},{status:409});
+    if(!["criteria","candidates","comparison","decision"].includes(phase)||trial.status==="completed"||trial.experiment_version==="5.0.0"&&trial.status!=="active")return NextResponse.json({error:"현재 단계에서는 대화를 입력할 수 없습니다."},{status:409});
     if(phase!=="decision"){
-      const {data:exposure}=await db.from("trial_phase_exposures").select("content_ready_at,active_tab_id,lease_until")
-        .eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
-      if(!exposure?.content_ready_at||exposure.active_tab_id!==input.tabId||!exposure.lease_until||new Date(exposure.lease_until).getTime()<Date.now())return NextResponse.json({error:"현재 활성 화면에서 내용을 확인한 뒤 입력해 주세요."},{status:409});
+      if(trial.experiment_version==="5.0.0"){
+        const {data:exposure}=await db.from("v5_phase_records").select("phase_status,active_tab_id,lease_until,effective_exposure_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
+        if(!exposure||exposure.phase_status!=="active"||exposure.active_tab_id!==input.tabId||!exposure.lease_until||new Date(exposure.lease_until).getTime()<Date.now())return NextResponse.json({error:"현재 활성 화면에서 내용을 확인한 뒤 입력해 주세요."},{status:409});
+      }else{
+        const {data:exposure}=await db.from("trial_phase_exposures").select("content_ready_at,active_tab_id,lease_until").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
+        if(!exposure?.content_ready_at||exposure.active_tab_id!==input.tabId||!exposure.lease_until||new Date(exposure.lease_until).getTime()<Date.now())return NextResponse.json({error:"현재 활성 화면에서 내용을 확인한 뒤 입력해 주세요."},{status:409});
+      }
     }
     if(input.inputMode==="chat"&&!input.text)return NextResponse.json({error:"메시지를 입력해 주세요."},{status:400});
     const {data:profile}=await db.from("recipient_profiles").select("*").eq("id",trial.profile_id).single();
@@ -80,7 +84,7 @@ export async function POST(request:Request){
       await logEvent({participantId:person.id,trialId:trial.id,eventType:"clarification_requested",phase,actorType:"agent",inputMode:mode,intent:intent.intent,payload:{reason:response}});
     } else if((intent.intent==="criteria_update"&&phase!=="criteria")||taskIntent&&((intent.intent==="final_choice"&&trial.decision_authority!=="human")||
       (intent.intent==="final_choice"&&phase!=="decision")||
-      (["search_request","compare_request"].includes(intent.intent)&&trial.execution_autonomy!=="human_guided")||
+      (["search_request","compare_request"].includes(intent.intent)&&(trial.experiment_version==="5.0.0"?trial.candidate_builder!=="human":trial.execution_autonomy!=="human_guided"))||
       (intent.intent==="search_request"&&phase!=="criteria")||
       (intent.intent==="compare_request"&&phase!=="candidates"))){
       response="이 단계에서는 후보 집합이나 과업 진행·최종 선택 권한을 변경할 수 없습니다. 표시된 상품에 대한 설명은 질문할 수 있습니다.";
@@ -109,8 +113,12 @@ export async function POST(request:Request){
         await logEvent({participantId:person.id,trialId:trial.id,eventType:"filters_applied",phase,actorType:"participant",inputMode:mode,intent:intent.intent,payload:{stateVersion:nextState.state_version,selectedCategory:nextState.selected_category,preferenceTags:nextState.preference_tags,selectionPriorities:nextState.selection_priorities}});
       }
       if(intent.intent==="search_request"||intent.intent==="compare_request"){
-        const {data:exposure}=await db.from("trial_phase_exposures").select("accumulated_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
-        if(Number(exposure?.accumulated_ms??0)<EXPERIMENT.minimumPhaseExposureMs)response="현재 내용을 최소 20초 동안 확인한 뒤 다음 과업을 요청할 수 있습니다.";
+        const {data:exposure}=trial.experiment_version==="5.0.0"
+          ?await db.from("v5_phase_records").select("effective_exposure_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle()
+          :await db.from("trial_phase_exposures").select("accumulated_ms").eq("trial_id",trial.id).eq("phase",phase).maybeSingle();
+        const elapsed=Number((exposure as any)?.effective_exposure_ms??(exposure as any)?.accumulated_ms??0);
+        const minimum=trial.experiment_version==="5.0.0"?60000:EXPERIMENT.minimumPhaseExposureMs;
+        if(elapsed<minimum)response=`현재 내용을 최소 ${minimum/1000}초 동안 확인한 뒤 다음 과업을 요청할 수 있습니다.`;
         else{response=intent.intent==="search_request"?"후보 구성을 요청했습니다.":"후보 비교를 요청했습니다.";advanceRequested=true;}
       }else if(phase==="criteria"&&intent.intent==="criteria_update"){
         const criterionText=allPriorities.length===1&&allPriorities[0]!=="감성적"?`${allPriorities[0]}을`:allPriorities.length?`${allPriorities.join("·")} 기준을`:"입력한 조건을";

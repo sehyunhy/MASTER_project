@@ -3,17 +3,17 @@ import assert from "node:assert/strict";
 import { conditionRoles, exposureDeltaMs, MIN_PHASE_EXPOSURE_MS, nextPhase, phaseRemainingMs, taskActorAllowed, decisionActorAllowed } from "../lib/experiment/workflow";
 
 describe("factorial workflow mapping", () => {
-  it("preserves A/B human task requests and C/D autonomous tasks", () => {
-    assert.deepEqual(conditionRoles("C1"), { taskActor: "participant", decisionActor: "participant" });
-    assert.deepEqual(conditionRoles("C2"), { taskActor: "participant", decisionActor: "agent" });
-    assert.deepEqual(conditionRoles("C3"), { taskActor: "agent", decisionActor: "participant" });
-    assert.deepEqual(conditionRoles("C4"), { taskActor: "agent", decisionActor: "agent" });
+  it("maps the four builder-by-decision conditions", () => {
+    assert.deepEqual(conditionRoles("C1"), { candidateBuilder: "human", candidateMode:"human_sequential", decisionAuthority: "human", label:"A · 순차 협업 후 사람 확정" });
+    assert.deepEqual(conditionRoles("C2"), { candidateBuilder: "human", candidateMode:"human_sequential", decisionAuthority: "agent", label:"C · 순차 협업 후 Agent 확정" });
+    assert.deepEqual(conditionRoles("C3"), { candidateBuilder: "agent", candidateMode:"agent_batch", decisionAuthority: "human", label:"B · Agent 일괄 구성 후 사람 확정" });
+    assert.deepEqual(conditionRoles("C4"), { candidateBuilder: "agent", candidateMode:"agent_batch", decisionAuthority: "agent", label:"D · Agent 일괄 구성·확정" });
   });
 
   it("rejects under-exposure and never credits hidden or stale intervals", () => {
     assert.equal(phaseRemainingMs(0), MIN_PHASE_EXPOSURE_MS);
-    assert.equal(phaseRemainingMs(19_999), 1);
-    assert.equal(phaseRemainingMs(20_000), 0);
+    assert.equal(phaseRemainingMs(59_999), 1);
+    assert.equal(phaseRemainingMs(60_000), 0);
     assert.equal(exposureDeltaMs(1_000, 4_000, true), 3_000);
     assert.equal(exposureDeltaMs(1_000, 9_000, true), 0);
     assert.equal(exposureDeltaMs(1_000, 4_000, false), 0);

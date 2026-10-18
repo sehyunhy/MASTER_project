@@ -8,6 +8,7 @@ import { comparisonSummary, buildComparison, storeTranscriptMessage } from "@/li
 import { EXPERIMENT } from "@/config/experiment";
 import { composeCandidateIntroduction, chooseFinalProductWithClaude } from "@/lib/agent/claude";
 import { loadAgentSessionContext } from "@/lib/agent/sessionContext";
+import { MAXIMUM_EXPOSURE_MS, MINIMUM_EXPOSURE_MS } from "@/config/experiment";
 
 const PHASES = new Set(["criteria","candidates","comparison"]);
 function responseForError(error: any) {
@@ -15,7 +16,9 @@ function responseForError(error: any) {
   const shortage=message.includes("Not enough active catalog products")||message.includes("적합한 실제 상품")||message.includes("APPROVED_STIMULUS_REQUIRED");
   const claudeNotConfigured=message.includes("Claude API 환경변수 ANTHROPIC_API_KEY");
   const status=shortage?409:claudeNotConfigured?503:message.includes("ANOTHER_TAB_ACTIVE")?409:message.includes("MIN_EXPOSURE_NOT_MET")?409:message.includes("ACTOR_NOT_ALLOWED")?403:message.includes("PHASE_MISMATCH")?409:message.includes("CONTENT_NOT_ACTIVE")?409:500;
-  const publicMessage=message.includes("MIN_EXPOSURE_NOT_MET")?"이 단계 내용을 최소 20초 동안 확인한 뒤 진행할 수 있습니다."
+  const publicMessage=message.includes("V5_MIN_EXPOSURE_NOT_MET")?"이 단계를 60초 이상 확인한 뒤 진행할 수 있습니다."
+    :message.includes("V5_PHASE_TIMEOUT")?"이 단계의 최대 확인시간이 끝났습니다. 완료하지 못한 행동은 미완료로 기록했습니다."
+    :message.includes("MIN_EXPOSURE_NOT_MET")?"이 단계 내용을 최소 60초 동안 확인한 뒤 진행할 수 있습니다."
     :message.includes("ANOTHER_TAB_ACTIVE")?"다른 탭에서 연구가 진행 중입니다. 그 탭으로 돌아가 주세요."
     :message.includes("PHASE_MISMATCH")?"현재 연구 단계가 갱신되었습니다. 최신 상태를 불러옵니다."
     :message.includes("ACTOR_NOT_ALLOWED")?"이 단계에서는 해당 작업을 진행할 수 없습니다."
@@ -33,12 +36,12 @@ async function contextFor(participantId:string,trialId:string) {
   const db=supabaseAdmin();
   const [{data:participant,error:pError},{data:trial,error:tError},{count:passed,error:trainingError}] = await Promise.all([
     db.from("participants").select("id,participant_code,role,intimacy_condition,sequence_id,is_mock").eq("id",participantId).single(),
-    db.from("trials").select("id,participant_id,trial_number,profile_id,condition_id,execution_autonomy,decision_authority,status,current_phase,experiment_version").eq("id",trialId).eq("participant_id",participantId).single(),
+    db.from("trials").select("id,participant_id,trial_number,profile_id,condition_id,candidate_builder,candidate_mode,execution_autonomy,decision_authority,status,current_phase,experiment_version,completion_outcome").eq("id",trialId).eq("participant_id",participantId).single(),
     db.from("training_attempts").select("id",{count:"exact",head:true}).eq("participant_id",participantId).eq("passed",true),
   ]);
   if(pError||tError||trainingError||!participant||!trial)throw new Error("PARTICIPANT_OR_TRIAL_NOT_FOUND");
   if(trial.experiment_version!==EXPERIMENT.version)throw Object.assign(new Error("OLD_EXPERIMENT_VERSION"),{status:409});
-  if(!passed)throw Object.assign(new Error("TRAINING_REQUIRED"),{status:403});
+  if(trial.experiment_version!==EXPERIMENT.version&&!passed)throw Object.assign(new Error("TRAINING_REQUIRED"),{status:403});
   const {data:trials,error:trialsError}=await db.from("trials").select("id,status").eq("participant_id",participantId).order("trial_number");
   if(trialsError)throw trialsError;
   const current=(trials??[]).find((row:any)=>row.status!=="completed");
@@ -46,13 +49,180 @@ async function contextFor(participantId:string,trialId:string) {
   return {db,participant,trial};
 }
 
-async function saveEvent(context:any,eventType:string,phase:string,actorType:"participant"|"agent"|"system"|"simulated_giver",payload:Record<string,unknown>={},effectiveExposureMs?:number,messageId?:string,idempotencyKey?:string) {
+async function saveEvent(context:any,eventType:string,phase:string,actorType:"participant"|"agent"|"system"|"simulated_giver",payload:Record<string,unknown>={},effectiveExposureMs?:number,messageId?:string,idempotencyKey?:string,elapsedMs?:number) {
   const taskId=typeof payload.taskId==="string"?payload.taskId:undefined;
   const stableEvents=new Set(["phase_entered","content_ready","trial_started","profile_shown","phase_exposure_satisfied","phase_exited","candidate_shown","comparison_shown","human_selection_screen_shown","paper_survey_prompt_shown"]);
   const eventKey=idempotencyKey??(taskId?phase+":"+eventType+":"+taskId:typeof payload.questionId==="string"?phase+":"+eventType+":"+payload.questionId:stableEvents.has(eventType)?phase+":"+eventType:undefined);
   await logEvent({participantId:context.participant.id,trialId:context.trial.id,eventType,phase,actorType,
-    simulatedActorEvent:actorType==="simulated_giver",payload,effectiveExposureMs,taskId,messageId,
+    simulatedActorEvent:actorType==="simulated_giver",payload,effectiveExposureMs,elapsedMs,taskId,messageId,
     idempotencyKey:eventKey});
+}
+
+async function storeV6ScriptedTimeline(db:any,trialId:string,stimulus:any,phase:"candidates"|"decision") {
+  const timeline=stimulus?.transcript?.timeline;
+  if(!Array.isArray(timeline))return;
+  for(let index=0;index<timeline.length;index++){
+    const item=timeline[index];
+    if(item?.phase!==phase)continue;
+    if(!["giver","agent"].includes(item.actor)||typeof item.content!=="string"||!item.content.trim())throw new Error("V6_SCRIPTED_TIMELINE_INVALID");
+    const actorType=item.actor==="giver"?"simulated_giver":"agent";
+    const messageType=["text","product_cards","comparison","task_request","decision"].includes(item.messageType)?item.messageType:"text";
+    await storeTranscriptMessage(db,{trialId,phase,actorType,messageType,content:item.content.trim(),payload:item.payload&&typeof item.payload==="object"?item.payload:{},idempotencyKey:`v6-scripted-${phase}:${trialId}:${index}`,simulatedActorEvent:actorType==="simulated_giver",eventOrigin:"scripted",transcriptId:stimulus.id,stimulusVersion:stimulus.version});
+  }
+}
+
+async function prepareV5Decision(context:any) {
+  const {db,trial,participant}=context;
+  if(trial.experiment_version!==EXPERIMENT.version||trial.current_phase!=="decision")return;
+  if(trial.decision_authority==="agent"){
+    await ensureV5AgentDecision(context);
+    return;
+  }
+  if(participant.role==="giver"){
+    const {data:message,error}=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","v5-human-decision-handoff").maybeSingle();
+    if(error)throw error;
+    if(!message)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"agent",messageType:"decision",content:"후보 비교가 끝났습니다. 최종 선물은 선물 주는 사람이 직접 선택해 주세요.",payload:{decisionAuthority:"human"},idempotencyKey:"v5-human-decision-handoff",eventOrigin:"system"});
+    return;
+  }
+  const {data:links,error:linksError}=await db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trial.id).order("display_order");
+  if(linksError)throw linksError;
+  const {data:trialState,error:trialError}=await db.from("trials").select("stimulus_id,scenario_id,condition_id").eq("id",trial.id).single();
+  if(trialError||!trialState)throw trialError??new Error("TRIAL_STIMULUS_MISSING");
+  const query=db.from("v5_stimuli").select("id,version,final_source_product_id,transcript,review_status,frozen_at").eq("scenario_id",trialState.scenario_id).eq("condition_id",trialState.condition_id).eq("review_status","approved");
+  const {data:stimulus,error:stimulusError}=trialState.stimulus_id?await query.eq("id",trialState.stimulus_id).single():await query.maybeSingle();
+  if(stimulusError||!stimulus?.frozen_at)throw new Error("APPROVED_STIMULUS_REQUIRED");
+  const chosen=(links??[]).find((item:any)=>item.product_snapshot?.source_product_id===stimulus.final_source_product_id);
+  if(!chosen){
+    if(trial.completion_outcome==="timeout"){
+      await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"system",messageType:"decision",content:"이 단계는 시간 초과로 종료되었습니다. 최종 선물은 확정되지 않았습니다.",payload:{incomplete:true,decisionAuthority:"human"},idempotencyKey:"v5-human-decision-incomplete",eventOrigin:"system"});
+      await saveEvent(context,"task_incomplete","decision","system",{reason:"frozen_final_product_missing"},undefined,undefined,"v5-human-decision-incomplete:"+trial.id);
+      return;
+    }
+    throw new Error("V5_SCRIPTED_FINAL_PRODUCT_NOT_IN_CANDIDATES");
+  }
+  const {data:existing,error:selectionError}=await db.from("final_selections").select("selected_candidate_id,selected_by,is_simulated").eq("trial_id",trial.id).maybeSingle();
+  if(selectionError)throw selectionError;
+  if(existing&&(existing.selected_candidate_id!==chosen.gift_candidate_id||existing.selected_by!=="human"||!existing.is_simulated))throw new Error("V5_DECISION_AUTHORITY_CONFLICT");
+  if(!existing){
+    const {error}=await db.rpc("v5_finalize_selection",{p_trial_id:trial.id,p_participant_id:participant.id,p_candidate_id:chosen.gift_candidate_id,p_actor:"human",p_is_simulated:true});
+    if(error)throw error;
+  }
+  const {data:message,error:messageError}=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","final-decision-v2").maybeSingle();
+  if(messageError)throw messageError;
+  if(!message)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"simulated_giver",messageType:"decision",content:stimulus.transcript.giver_decision??"선물 주는 사람이 최종 선물을 확정했습니다.",payload:{decisionAuthority:"human",candidateId:chosen.gift_candidate_id,productSnapshot:chosen.product_snapshot},idempotencyKey:"final-decision-v2",simulatedActorEvent:true,eventOrigin:"scripted",transcriptId:stimulus.id,stimulusVersion:stimulus.version??1});
+  const {data:event,error:eventError}=await db.from("event_logs").select("id").eq("trial_id",trial.id).eq("event_type","simulated_actor_event").eq("task_id","human_final_selection").limit(1).maybeSingle();
+  if(eventError)throw eventError;
+  if(!event)await saveEvent(context,"simulated_actor_event","decision","simulated_giver",{taskId:"human_final_selection",candidateId:chosen.gift_candidate_id},undefined,undefined,"v5-scripted-human-final:"+trial.id);
+}
+
+async function ensureV5AgentDecision(context:any) {
+  const {db,trial,participant}=context;
+  if(trial.experiment_version!==EXPERIMENT.version||trial.current_phase!=="decision"||trial.decision_authority!=="agent")return;
+  const [{data:links,error:linksError},{data:existing,error:selectionError}]=await Promise.all([
+    db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trial.id).order("display_order"),
+    db.from("final_selections").select("selected_candidate_id,selected_by,selected_at,is_simulated").eq("trial_id",trial.id).maybeSingle(),
+  ]);
+  if(linksError||selectionError)throw linksError??selectionError;
+  if(existing&&existing.selected_by!=="agent")throw new Error("V5_DECISION_AUTHORITY_CONFLICT");
+  if(!links||links.length!==3){
+    if(trial.completion_outcome==="timeout")await saveEvent(context,"task_incomplete","decision","system",{reason:"candidate_set_incomplete",candidateCount:links?.length??0},undefined,undefined,"v5-agent-decision-incomplete:"+trial.id);
+    return;
+  }
+  let stimulus:any=null;let chosen:any=null;let explanation:string|undefined;let model="researcher-script-v5";
+  if(participant.role==="recipient"){
+    const {data:row,error:rowError}=await db.from("trials").select("stimulus_id,scenario_id,condition_id").eq("id",trial.id).single();
+    if(rowError||!row)throw rowError??new Error("TRIAL_STIMULUS_MISSING");
+    let query=db.from("v5_stimuli").select("id,version,final_source_product_id,transcript,review_status,frozen_at").eq("scenario_id",row.scenario_id).eq("condition_id",row.condition_id).eq("review_status","approved");
+    if(row.stimulus_id)query=query.eq("id",row.stimulus_id);
+    const {data,error}=row.stimulus_id?await query.single():await query.maybeSingle();
+    if(error||!data?.frozen_at)throw new Error("APPROVED_STIMULUS_REQUIRED");
+    stimulus=data;chosen=links.find((item:any)=>item.product_snapshot?.source_product_id===stimulus.final_source_product_id);explanation=stimulus.transcript?.decision_agent;
+  } else if(existing?.selected_by==="agent") {
+    chosen=links.find((item:any)=>item.gift_candidate_id===existing.selected_candidate_id);
+  } else {
+    const started=Date.now();await saveEvent(context,"agent_task_started","decision","agent",{taskId:"final_selection",modelVersion:EXPERIMENT.promptVersion},undefined,undefined,"v5-agent-decision-start:"+trial.id);const sessionContext=await loadAgentSessionContext(db,trial.id,links);
+    const output=await chooseFinalProductWithClaude(links,sessionContext);
+    chosen=links.find((item:any)=>item.product_snapshot?.source_product_id===output.sourceProductId);explanation=output.reasonText;model=output.model;
+    await saveEvent(context,"agent_task_completed","decision","agent",{taskId:"final_selection",modelVersion:model,recovered:true},undefined,undefined,"v5-agent-decision-task:"+trial.id,Date.now()-started);
+  }
+  if(!chosen){if(trial.completion_outcome==="timeout")return;throw new Error("V5_AGENT_DECISION_PRODUCT_INVALID");}
+  if(!existing){
+    const {error}=await db.rpc("v5_finalize_selection",{p_trial_id:trial.id,p_participant_id:participant.id,p_candidate_id:chosen.gift_candidate_id,p_actor:"agent",p_is_simulated:participant.role==="recipient"});
+    if(error)throw error;
+  }
+  const {data:message,error:messageError}=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","v5-agent-decision-explanation").maybeSingle();
+  if(messageError)throw messageError;
+  if(!message)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"agent",messageType:"decision",content:explanation??"Agent가 세 후보를 비교해 최종 선물을 확정했습니다.",payload:{candidateId:chosen.gift_candidate_id,productSnapshot:chosen.product_snapshot,modelVersion:model,recovered:Boolean(existing)},idempotencyKey:"v5-agent-decision-explanation",eventOrigin:stimulus?"scripted":"participant",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+  const {data:event}=await db.from("event_logs").select("id").eq("trial_id",trial.id).eq("event_type","agent_final_selection").limit(1).maybeSingle();
+  if(!event)await saveEvent(context,"agent_final_selection","decision","agent",{candidateId:chosen.gift_candidate_id,modelVersion:model,recovered:Boolean(existing)},undefined,undefined,"v5-agent-final-selection:"+trial.id);
+}
+
+async function prepareV6Decision(context:any) {
+  const {db,trial,participant}=context;
+  if(trial.current_phase!=="decision")return;
+  const [{data:links,error:linksError},{data:existing,error:selectionError},{data:profile,error:profileError}]=await Promise.all([
+    db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trial.id).order("display_order"),
+    db.from("final_selections").select("selected_candidate_id,selected_by,is_simulated").eq("trial_id",trial.id).maybeSingle(),
+    db.from("recipient_profiles").select("id,name,profile_code,hobbies,recent_interest,preference,dislike,gift_budget").eq("id",trial.profile_id).single(),
+  ]);
+  if(linksError||selectionError||profileError)throw linksError??selectionError??profileError;
+  if((links??[]).length!==3)throw new Error("V6_CANDIDATES_NOT_READY");
+  let stimulus:any=null;
+  if(participant.role==="recipient"){
+    const {data:row,error}=await db.from("trials").select("stimulus_id,scenario_id,condition_id").eq("id",trial.id).single();if(error)throw error;
+    let query=db.from("v6_stimuli").select("id,version,source_kind,transcript,final_source_product_id,frozen_at").eq("scenario_id",row.scenario_id).eq("condition_id",row.condition_id).eq("review_status","approved");
+    if(row.stimulus_id)query=query.eq("id",row.stimulus_id);
+    const result=row.stimulus_id?await query.single():await query.maybeSingle();
+    if(result.error||!result.data?.frozen_at)throw new Error("APPROVED_STIMULUS_REQUIRED");stimulus=result.data;
+    await storeV6ScriptedTimeline(db,trial.id,stimulus,"decision");
+  }
+  const comparison=participant.role==="recipient"?stimulus.transcript?.comparison_agent:comparisonSummary(buildComparison(links,{profile,priorities:[],budget:profile.gift_budget}));
+  const existingComparison=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","v6-comparison").maybeSingle();
+  if(existingComparison.error)throw existingComparison.error;
+  if(!existingComparison.data)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"agent",messageType:"comparison",content:comparison??"세 후보의 DB 상품 정보를 비교해 확인해 주세요.",payload:{rows:buildComparison(links,{profile,priorities:[],budget:profile.gift_budget}),criteria:["가격","예산 적합성","상품 정보","관심사 연결","고려할 점"]},idempotencyKey:"v6-comparison",eventOrigin:stimulus?"scripted":"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+  if(trial.decision_authority==="human"&&participant.role==="recipient"){
+    const simulatedChoice=links.find((item:any)=>item.product_snapshot?.source_product_id===stimulus.final_source_product_id);
+    if(!simulatedChoice)throw new Error("V6_SCRIPTED_HUMAN_FINAL_NOT_IN_CANDIDATES");
+    if(existing&&(existing.selected_candidate_id!==simulatedChoice.gift_candidate_id||existing.selected_by!=="human"||!existing.is_simulated))throw new Error("V6_DECISION_AUTHORITY_CONFLICT");
+    if(!existing){
+      const {error}=await db.rpc("v6_finalize_selection",{p_trial_id:trial.id,p_participant_id:participant.id,p_candidate_id:simulatedChoice.gift_candidate_id,p_actor:"human",p_reason_text:null,p_tab_id:null,p_is_simulated:true});
+      if(error)throw error;
+    }
+    const decisionText=stimulus.transcript?.giver_decision??"선물 주는 사람이 세 후보 중 하나를 최종 선물로 선택했습니다.";
+    const priorDecision=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","v6-scripted-giver-decision").maybeSingle();
+    if(priorDecision.error)throw priorDecision.error;
+    if(!priorDecision.data)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"simulated_giver",messageType:"decision",content:decisionText,payload:{decisionAuthority:"human",candidateId:simulatedChoice.gift_candidate_id,productSnapshot:simulatedChoice.product_snapshot},idempotencyKey:"v6-scripted-giver-decision",simulatedActorEvent:true,eventOrigin:"scripted",transcriptId:stimulus.id,stimulusVersion:stimulus.version});
+    const finalMessage=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","final-decision-v2").maybeSingle();
+    if(finalMessage.error)throw finalMessage.error;
+    if(!finalMessage.data)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"simulated_giver",messageType:"decision",content:`선물 주는 사람이 선택한 최종 선물: ${simulatedChoice.product_snapshot?.product_name??"선물 후보"}`,payload:{decisionAuthority:"human",candidateId:simulatedChoice.gift_candidate_id,productSnapshot:simulatedChoice.product_snapshot},idempotencyKey:"final-decision-v2",simulatedActorEvent:true,eventOrigin:"scripted",transcriptId:stimulus.id,stimulusVersion:stimulus.version});
+    await saveEvent(context,"simulated_actor_event","decision","simulated_giver",{taskId:"human_final_selection",candidateId:simulatedChoice.gift_candidate_id,source:"frozen_recipient_stimulus"},undefined,undefined,"v6-scripted-human-final:"+trial.id);
+    return;
+  }
+  if(trial.decision_authority==="human"){
+    const handoff=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","v6-human-decision-handoff").maybeSingle();
+    if(handoff.error)throw handoff.error;
+    if(!handoff.data)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:participant.role==="recipient"?"simulated_giver":"agent",messageType:"text",content:participant.role==="recipient"?(stimulus.transcript?.giver_decision_prompt??"선물 주는 사람이 세 후보 중 하나를 선택합니다."):"세 후보를 비교했습니다. 선물 하나를 선택하고 선택 이유를 직접 작성해 주세요.",payload:{decisionAuthority:"human"},idempotencyKey:"v6-human-decision-handoff",simulatedActorEvent:participant.role==="recipient",eventOrigin:stimulus?"scripted":"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
+    return;
+  }
+  if(existing&&existing.selected_by!=="agent")throw new Error("V6_DECISION_AUTHORITY_CONFLICT");
+  let chosen:any=existing?links.find((item:any)=>item.gift_candidate_id===existing.selected_candidate_id):null;
+  let reason=existing?null:"";let model="researcher-script-v6";let responseId:string|undefined;let latency=0;
+  if(!chosen&&participant.role==="recipient"){
+    chosen=links.find((item:any)=>item.product_snapshot?.source_product_id===stimulus.final_source_product_id);
+    reason=stimulus.transcript?.agent_decision_reason??stimulus.transcript?.agent_decision;
+    if(typeof reason!=="string"||reason.length<15)throw new Error("V6_SCRIPTED_AGENT_REASON_MISSING");
+  }else if(!chosen){
+    const started=Date.now();const output=await chooseFinalProductWithClaude(links,await loadAgentSessionContext(db,trial.id,links));
+    chosen=links.find((item:any)=>item.product_snapshot?.source_product_id===output.sourceProductId);reason=output.reasonText;model=output.model;responseId=output.responseId;latency=output.latencyMs;
+  }
+  if(!chosen||typeof reason!=="string")throw new Error("V6_AGENT_DECISION_INVALID");
+  if(!existing){
+    const {error}=await db.rpc("v6_finalize_selection",{p_trial_id:trial.id,p_participant_id:participant.id,p_candidate_id:chosen.gift_candidate_id,p_actor:"agent",p_reason_text:reason,p_is_simulated:participant.role==="recipient"});if(error)throw error;
+  }
+  const {error:trialUpdateError}=await db.from("trials").update({model_version:model,agent_reason_text:reason,final_decision_source:"agent"}).eq("id",trial.id);if(trialUpdateError)throw trialUpdateError;
+  await saveEvent(context,"agent_final_selection","decision","agent",{candidateId:chosen.gift_candidate_id,model,responseId,simulatedPlayback:participant.role==="recipient"},undefined,undefined,"v6-agent-final:"+trial.id,latency);
+  const already=await db.from("trial_messages").select("id").eq("trial_id",trial.id).eq("idempotency_key","final-decision-v2").maybeSingle();if(already.error)throw already.error;
+  if(!already.data)await storeTranscriptMessage(db,{trialId:trial.id,phase:"decision",actorType:"agent",messageType:"decision",content:`Agent가 선택한 최종 선물: ${chosen.product_snapshot?.product_name??"선물 후보"}\n\n선택 이유: ${reason}`,payload:{candidateId:chosen.gift_candidate_id,productSnapshot:chosen.product_snapshot,reasonText:reason,model,responseId},idempotencyKey:"final-decision-v2",eventOrigin:stimulus?"scripted":"system",transcriptId:stimulus?.id,stimulusVersion:stimulus?.version});
 }
 
 export async function POST(request:Request) {
@@ -61,7 +231,54 @@ export async function POST(request:Request) {
   if(typeof body.participantId!=="string"||typeof body.trialId!=="string"||typeof body.action!=="string")return NextResponse.json({error:"참가자·trial 정보를 확인해 주세요."},{status:400});
   try {
     const context=await contextFor(body.participantId,body.trialId); const {db,trial,participant}=context;
+    if(trial.experiment_version===EXPERIMENT.version){
+      const timedPhases=new Set(["candidates","decision"]);
+      if(body.action==="ready"){
+        if(!timedPhases.has(body.phase)||typeof body.tabId!=="string")return NextResponse.json({error:"단계 정보를 확인해 주세요."},{status:400});
+        // Prepare an Agent result before the decision exposure clock starts.
+        if(body.phase==="decision")await prepareV6Decision(context);
+        const {data,error}=await db.rpc("v6_phase_ready",{p_trial_id:trial.id,p_phase:body.phase,p_tab_id:body.tabId});
+        if(error)throw error;
+        await saveEvent(context,"phase_entered",body.phase,"system",{contentReady:true},Number(data?.effective_exposure_ms??0),undefined,`v5-phase-enter:${trial.id}:${body.phase}`);
+        return NextResponse.json({...data,minimum_exposure_ms:MINIMUM_EXPOSURE_MS.experiment[participant.role as "giver"|"recipient"],maximum_exposure_ms:MAXIMUM_EXPOSURE_MS});
+      }
+      if(body.action==="heartbeat"){
+        if(!timedPhases.has(body.phase)||typeof body.tabId!=="string"||!Number.isSafeInteger(body.sequence)||body.sequence<0)return NextResponse.json({error:"노출시간 신호를 확인해 주세요."},{status:400});
+        const active=body.active===true;
+        const {data,error}=await db.rpc("v6_phase_heartbeat",{p_trial_id:trial.id,p_phase:body.phase,p_tab_id:body.tabId,p_sequence:body.sequence,p_active:active});
+        if(error)throw error;
+        if(data?.timed_out)await saveEvent(context,"phase_timeout",body.phase,"system",{incompleteAction:true,maximumExposureMs:MAXIMUM_EXPOSURE_MS},Number(data.effective_exposure_ms??MAXIMUM_EXPOSURE_MS),undefined,"v5-phase-timeout:"+trial.id+":"+body.phase);
+        if(body.wasActive===true&&!active)await saveEvent(context,body.reason==="offline"?"connection_lost":"page_hidden",body.phase,"system",{reason:body.reason??"inactive"});
+        if(body.wasActive===false&&active)await saveEvent(context,body.reason==="online"?"connection_restored":"page_visible",body.phase,"system");
+        return NextResponse.json({...data,minimum_exposure_ms:MINIMUM_EXPOSURE_MS.experiment[participant.role as "giver"|"recipient"],maximum_exposure_ms:MAXIMUM_EXPOSURE_MS});
+      }
+      if(body.action==="advance"){
+        if(!timedPhases.has(trial.current_phase)||typeof body.tabId!=="string")return NextResponse.json({error:"현재 단계에서는 진행할 수 없습니다."},{status:409});
+        const phase=trial.current_phase;
+        const timedOut=trial.completion_outcome==="timeout";
+        if(phase==="candidates"&&!timedOut){
+          const {data:links,error:linksError}=await db.from("trial_candidates").select("gift_candidate_id,display_order").eq("trial_id",trial.id);
+          if(linksError)throw linksError;
+          if((links??[]).length!==3)return NextResponse.json({error:"서로 다른 선물 후보 세 개를 모두 준비한 뒤 진행해 주세요."},{status:409});
+        }
+        if(body.requested!==true)return NextResponse.json({error:"참가자가 직접 다음 단계를 선택해야 합니다."},{status:403});
+        const {data,error}=await db.rpc("v6_advance_phase",{p_trial_id:trial.id,p_phase:phase,p_tab_id:body.tabId});
+        if(error)throw error;
+        await saveEvent(context,"phase_exposure_satisfied",phase,"system",{minimumMs:60000,actualExposureMs:Number(data?.effective_exposure_ms??0)},Number(data?.effective_exposure_ms??0));
+        await saveEvent(context,"phase_exited",phase,"system",{nextPhase:data?.phase,reason:"participant_requested"});
+        if(data?.phase==="decision"){
+          trial.current_phase="decision";
+          await prepareV6Decision(context);
+        }
+        if(data?.phase==="awaiting_survey"){
+          await storeTranscriptMessage(db,{trialId:trial.id,phase:"awaiting_survey",actorType:"system",messageType:"text",content:"선택 결과를 확인한 뒤 연구자에게 받은 종이 설문을 작성해 주세요. 설문과 종이 인물 자극물 확인 시간은 실험 단계 노출시간에서 제외됩니다.",payload:{paperSurveyTimeExcluded:true,completionOutcome:trial.completion_outcome},idempotencyKey:"paper-survey-prompt-v2"});
+        }
+        return NextResponse.json(data);
+      }
+    }
     if(body.action==="retry_generation") {
+      if(trial.experiment_version==="5.0.0"&&participant.role==="giver"&&trial.candidate_builder!=="agent")return NextResponse.json({error:"이 조건에서는 선물 주는 사람이 후보를 직접 구성합니다."},{status:403});
+      if(trial.experiment_version==="6.0.0"&&participant.role==="giver"&&trial.candidate_mode!=="agent_batch")return NextResponse.json({error:"이 조건에서는 선물 주는 사람이 후보별 요청을 작성합니다."},{status:403});
       if(trial.current_phase!=="candidates")return NextResponse.json({error:"후보 생성 단계가 아닙니다."},{status:409});
       const {count,error:countError}=await db.from("trial_candidates").select("id",{count:"exact",head:true}).eq("trial_id",trial.id);
       if(countError)throw countError;
@@ -72,13 +289,16 @@ export async function POST(request:Request) {
       }
       if((count??0)<3||!existingMessage) {
         await saveEvent(context,"retry","candidates","system",{operation:"generate_missing_catalog_candidates",existingCandidateCount:count??0},undefined,undefined,"candidate-generation-retry:"+trial.id+":"+randomUUID());
+        const agentStartedAt=Date.now();
+        await saveEvent(context,"agent_task_started","candidates","agent",{taskId:"compose_candidates",modelVersion:trial.experiment_version==="5.0.0"?EXPERIMENT.promptVersion:undefined});
         const generated=await generateTrialCandidates(db,trial.id);
+        if(participant.role==="recipient"&&trial.experiment_version==="6.0.0")await storeV6ScriptedTimeline(db,trial.id,generated.stimulus,"candidates");
         if(!existingMessage){
-          const intro=participant.role==="recipient"?generated.stimulus?.transcript?.candidate_agent:await composeCandidateIntroduction(generated.candidates,await loadAgentSessionContext(db,trial.id,generated.candidates));
+        const intro=participant.role==="recipient"?generated.stimulus?.transcript?.candidate_agent:await composeCandidateIntroduction(generated.candidates,await loadAgentSessionContext(db,trial.id,generated.candidates));
           await storeTranscriptMessage(db,{trialId:trial.id,phase:"candidates",actorType:"agent",messageType:"product_cards",content:intro??"세 후보를 표시합니다.",payload:{candidates:generated.candidates},idempotencyKey:"catalog-candidates-v2",eventOrigin:participant.role==="recipient"?generated.stimulus?.source_kind:"system",transcriptId:generated.stimulus?.id,stimulusVersion:generated.stimulus?.version});
         }
         const {data:prior}=await db.from("event_logs").select("id").eq("trial_id",trial.id).eq("event_type","agent_task_completed").eq("task_id","compose_candidates").limit(1).maybeSingle();
-        if(!prior)await saveEvent(context,"agent_task_completed","candidates","agent",{taskId:"compose_candidates",candidateCount:generated.candidates.length,candidateSetId:generated.candidateSetId,recovered:true});
+        if(!prior)await saveEvent(context,"agent_task_completed","candidates","agent",{taskId:"compose_candidates",candidateCount:generated.candidates.length,candidateSetId:generated.candidateSetId,modelVersion:generated.candidateModel,recovered:true},undefined,undefined,undefined,Date.now()-agentStartedAt);
       }
       return NextResponse.json({ok:true});
     }
@@ -250,8 +470,8 @@ export async function POST(request:Request) {
           try{
             const choice=await chooseFinalProductWithClaude(picks,await loadAgentSessionContext(db,trial.id));
             chosen=picks.find((pick:any)=>pick.product_snapshot?.source_product_id===choice.sourceProductId);
-            finalReasonFocus=choice.reasonFocus;
-            await saveEvent(context,"tool_result_returned","decision","agent",{tool:"choose_final_product",sourceProductId:choice.sourceProductId,model:choice.model,reasonFocus:choice.reasonFocus});
+            finalReasonFocus=choice.reasonText;
+            await saveEvent(context,"tool_result_returned","decision","agent",{tool:"choose_final_product",sourceProductId:choice.sourceProductId,model:choice.model,reasonText:choice.reasonText,responseId:choice.responseId},undefined,undefined,undefined,choice.latencyMs);
           }catch(error){
             await saveEvent(context,(error as Error).message==="AI_FINAL_PRODUCT_NOT_IN_TRIAL"?"invalid_product_rejected":"error_occurred","decision","agent",{tool:"choose_final_product",reason:(error as Error).message});
             throw error;

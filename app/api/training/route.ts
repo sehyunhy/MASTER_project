@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const {data:catalog,error:catalogError}=await db.from("product_catalog")
       .select("source_product_id,product_name_ko,product_name_original,category,price_experiment,price_original,image_url,description,source_url,source_timestamp_raw")
       .eq("dataset_version",EXPERIMENT.candidateVersion).eq("experiment_eligible",true).eq("is_active",true)
-      .contains("profile_codes",["R4v2"]).in("source_product_id",practiceProductIds);
+      .contains("profile_codes",["R4v3"]).in("source_product_id",practiceProductIds);
     if(catalogError)throw catalogError;
     const practiceProducts=practiceProductIds.map(id=>(catalog??[]).find(item=>item.source_product_id===id));
     if(practiceProducts.some(item=>!item||!item.image_url||item.price_experiment==null))

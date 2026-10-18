@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { EXPERIMENT } from "@/config/experiment";
 import { recommendCatalogItems } from "@/lib/catalog/recommend";
+import { chooseCatalogCandidatesWithClaude } from "@/lib/agent/claude";
+import { loadAgentSessionContext } from "@/lib/agent/sessionContext";
 
 function stableValue(value:any):any {
   if(Array.isArray(value))return value.map(stableValue);
@@ -9,7 +11,7 @@ function stableValue(value:any):any {
 }
 function sameSnapshot(left:any,right:any){return JSON.stringify(stableValue(left))===JSON.stringify(stableValue(right));}
 
-function snapshot(item:any) {
+function snapshot(item:any, newPersona = false) {
   return {
     id:item.id,source_product_id:item.source_product_id,sku:item.sku,
     product_name:item.product_name_ko??item.product_name_original,
@@ -20,8 +22,8 @@ function snapshot(item:any) {
     description_original:item.description_original,image_url:item.image_url,
     specifications:item.specifications??{},source_url:item.source_url,
     source_timestamp:item.source_timestamp_raw,dataset_version:item.dataset_version,
-    use_cases:item.use_cases??[],strengths:[],limitations:[],care_requirements:null,
-    fit_reason:(item.use_cases??[])[0]??"원본 정보에 기반한 후보입니다.",
+    use_cases:newPersona?[]:(item.use_cases??[]),strengths:[],limitations:[],care_requirements:null,
+    fit_reason:newPersona?"":((item.use_cases??[])[0]??"원본 정보에 기반한 후보입니다."),
     source_type:item.source_type,is_mock:false,
   };
 }
@@ -76,8 +78,10 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
   if(profileError||participantError||!profile||!participant)throw profileError??participantError??new Error("Profile missing.");
   let picked:any[]=[];
   let stimulus:any=null;
+  let candidateModel:string|undefined;
   if(participant.role==="recipient") {
-    let stimulusQuery=db.from("recipient_stimuli").select("*").eq("scenario_id",trial.scenario_id).eq("review_status","approved");
+    let stimulusQuery=db.from(trial.experiment_version==="5.0.0"?"v5_stimuli":trial.experiment_version==="6.0.0"?"v6_stimuli":"recipient_stimuli").select("*").eq("scenario_id",trial.scenario_id).eq("review_status","approved");
+    if(trial.experiment_version==="5.0.0"||trial.experiment_version==="6.0.0")stimulusQuery=stimulusQuery.eq("condition_id",trial.condition_id);
     if(trial.stimulus_id)stimulusQuery=stimulusQuery.eq("id",trial.stimulus_id);
     const result=await stimulusQuery.order("version",{ascending:false}).limit(1).maybeSingle();
     if(result.error)throw result.error;
@@ -96,18 +100,33 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
         throw new Error("동결 상품 정보와 DB가 다릅니다. 연구자가 자극 버전을 재검토해야 합니다.");
     }
   } else {
-    const {data:catalog,error}=await db.from("product_catalog").select("*")
+    let query=db.from("product_catalog").select("*")
       .eq("dataset_version",EXPERIMENT.candidateVersion).eq("source_type","walmart_csv_snapshot")
       .eq("experiment_eligible",true).eq("is_active",true)
       .contains("profile_codes",[profile.profile_code]).lte("price_experiment",profile.gift_budget);
+    if(state?.selected_category)query=query.eq("category",state.selected_category);
+    if(state?.preference_tags?.length)query=query.overlaps("search_tags_ko",state.preference_tags);
+    if(trial.experiment_version==="5.0.0"||trial.experiment_version==="6.0.0")query=query.order("source_product_id").limit(30);
+    const {data:catalog,error}=await query;
     if(error)throw error;
-    const tags:string[]=state?.preference_tags??[];
-    const filtered=(catalog??[]).filter((item:any)=>(!state?.selected_category||item.category===state.selected_category)
-      &&(!tags.length||tags.some(tag=>(item.search_tags_ko??[]).includes(tag))));
-    picked=recommendCatalogItems(filtered,profile.profile_code,{priorities:state?.selection_priorities??[]},Number(profile.gift_budget));
+    if(trial.experiment_version==="5.0.0"||trial.experiment_version==="6.0.0"){
+      const pool=catalog??[];
+      if(pool.length<3)throw new Error(`V5_CANDIDATE_POOL_TOO_SMALL profile=${profile.profile_code} count=${pool.length}`);
+      if(options.previewOnly)picked=pool.slice(0,3);
+      else {
+        const selected=await chooseCatalogCandidatesWithClaude(pool,await loadAgentSessionContext(db,trialId));
+        candidateModel=selected.model;
+        picked=selected.sourceProductIds.map(id=>pool.find((item:any)=>item.source_product_id===id));
+      }
+    }else{
+      const tags:string[]=state?.preference_tags??[];
+      const filtered=(catalog??[]).filter((item:any)=>(!state?.selected_category||item.category===state.selected_category)
+        &&(!tags.length||tags.some(tag=>(item.search_tags_ko??[]).includes(tag))));
+      picked=recommendCatalogItems(filtered,profile.profile_code,{priorities:state?.selection_priorities??[]},Number(profile.gift_budget));
+    }
   }
   if(picked.length!==3)throw new Error(`프로필 ${profile.profile_code}의 적합한 실제 상품이 3개 미만입니다. 추가 자료가 필요합니다.`);
-  const snapshots=stimulus?.candidate_snapshots??picked.map(snapshot);
+  const snapshots=stimulus?.candidate_snapshots??picked.map((item:any)=>snapshot(item,profile.profile_code.endsWith("v3")));
   const candidateSetHash=createHash("sha256").update(JSON.stringify(snapshots)).digest("hex");
   const candidateSetId=stimulus?.id??`walmart-${trial.id}-${candidateSetHash.slice(0,12)}`;
   const {data:existing,error:existingError}=await db.from("trial_candidates").select("gift_candidate_id,display_order,product_snapshot").eq("trial_id",trialId).order("display_order");
@@ -139,7 +158,7 @@ export async function generateTrialCandidates(db:any,trialId:string,options:{pre
     if(linkError)throw linkError;
     result.push({gift_candidate_id:candidate.id,display_order:index+1,product_snapshot:productSnapshot});
   }
-  const {error:updateError}=await db.from("trials").update({candidate_set_hash:candidateSetHash,stimulus_id:stimulus?.id??null,stimulus_version:stimulus?.version??1,stimulus_source:stimulus?.source_kind??"participant_live"}).eq("id",trialId);
+  const {error:updateError}=await db.from("trials").update({candidate_set_hash:candidateSetHash,stimulus_id:stimulus?.id??null,stimulus_version:stimulus?.version??1,stimulus_source:stimulus?.source_kind??"participant_live",...(candidateModel?{model_version:candidateModel}:{})}).eq("id",trialId);
   if(updateError)throw updateError;
-  return {candidates:result,candidateSetId,candidateSetHash,stimulus};
+  return {candidates:result,candidateSetId,candidateSetHash,stimulus,candidateModel};
 }

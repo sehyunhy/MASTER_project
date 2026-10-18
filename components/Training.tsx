@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MINIMUM_EXPOSURE_MS, PROFILES } from "@/config/experiment";
 import { productSummaryKo } from "@/lib/catalog/productSummaryKo";
 import { buildProductComparisonEvidence } from "@/lib/catalog/productEvidence";
+import { relationshipV3 } from "@/lib/experiment/relationship";
 
 type Role = "giver"|"recipient";
 type Step = {actor:"giver"|"agent"; text:string; kind?:"dropdown"|"candidates"|"comparison"|"decision"; segment:"criteria"|"candidates"|"comparison"|"decision"};
@@ -51,7 +52,7 @@ const practiceComparisonFields: [string,string][] = [
   ["comparative_strength","다른 후보 대비 강점"],["consideration","선택 전 고려할 점"],["best_for","우선할 기준"],
 ];
 const TIMED_PRACTICE_SEGMENTS = new Set(["criteria","candidates","comparison"]);
-const practiceProfile = PROFILES.find(profile=>profile.id==="R4v2");
+const practiceProfile = PROFILES.find(profile=>profile.id==="R4v3");
 
 export function Training() {
   const [role,setRole]=useState<Role|null>(null);
@@ -289,8 +290,9 @@ export function Training() {
       <ol className="experiment-phase-step" aria-label="연습 진행 단계">{practiceStages.map((stage,index)=><li key={stage.id} className={index===currentStageIndex?"is-active":index<currentStageIndex?"is-complete":""} aria-current={index===currentStageIndex?"step":undefined}><span>{index+1}</span>{scenario===1&&stage.id==="criteria"?"정보 확인":stage.label}</li>)}</ol>
     </header>
     {practiceProfile&&<section className="training-context card" aria-label="연습용 선물 받는 사람 정보">
-      <div className="training-context-person"><p className="eyebrow">연습용 선물 받는 사람 · 연구자가 정한 정보</p><h2>{practiceProfile.name} <span>{practiceProfile.age}세 · {practiceProfile.occupation} · {practiceProfile.gift_occasion}</span></h2><strong>고정 예산 {practiceProfile.gift_budget.toLocaleString()}원</strong></div>
-      <div className="training-context-detail"><p className="body"><b>관심사</b> {practiceProfile.hobbies.join(" · ")}</p><p className="body">{practiceProfile.recent_interest} {practiceProfile.preference} {practiceProfile.dislike}</p><p className="body">{role==="recipient"?"당신은 선물을 받는 사람입니다. 선물 주는 사람과 Agent가 당신에게 줄 선물을 고르는 과정을 살펴보게 됩니다.":scenario===0?"기준을 입력하고 후보 구성·비교를 요청한 뒤 최종 선물을 직접 선택합니다.":"Agent가 제공된 정보를 바탕으로 후보 구성·비교·최종 선택을 진행합니다. 추가 정보를 입력하지 않습니다."}</p></div>
+      <div className="training-context-relationship"><p className="eyebrow">연습용 관계 유형 · {relationshipV3("high",role,practiceProfile.name).conditionLabel}</p><p className="body">{relationshipV3("high",role,practiceProfile.name).situation}</p></div>
+      <div className="training-context-person"><p className="eyebrow">연습용 선물 받는 사람 · 연구자가 정한 정보</p><h2>{practiceProfile.name} <span>{practiceProfile.age}세 · {practiceProfile.gender}</span></h2></div>
+      <div className="training-context-detail"><p className="body training-persona-text">{practiceProfile.participant_text}</p><p className="body">{role==="recipient"?`당신의 ${practiceProfile.gift_occasion}을 맞아 선물을 받는 상황입니다.`:`${practiceProfile.name}의 ${practiceProfile.gift_occasion} 선물을 선택하는 상황입니다.`} 고정 예산 {practiceProfile.gift_budget.toLocaleString()}원.</p><p className="body">{role==="recipient"?"당신은 선물을 받는 사람입니다. 선물 주는 사람과 Agent가 당신에게 줄 선물을 고르는 과정을 살펴보게 됩니다.":scenario===0?"기준을 입력하고 후보 구성·비교를 요청한 뒤 최종 선물을 직접 선택합니다.":"Agent가 제공된 정보를 바탕으로 후보 구성·비교·최종 선택을 진행합니다. 추가 정보를 입력하지 않습니다."}</p></div>
       <details className="training-context-note"><summary>연습용 자료 안내</summary><p>이 화면은 연구자가 구성한 연습용 시나리오입니다. 가격은 2024년 상품 기록을 연구용으로 고정 환산한 값이며 현재 판매가격이 아닙니다. 상품 상세를 열어 보는 시간도 현재 구간의 확인시간에 포함됩니다.</p></details>
     </section>}
     {error&&<p role="alert" className="experiment-error">{error}</p>}

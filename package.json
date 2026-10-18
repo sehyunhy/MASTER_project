@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "clear:mock": "tsx scripts/clearMockExperiment.ts",
     "seed:assignments": "tsx scripts/seedAssignments.ts",
+    "seed:v6-roster": "tsx scripts/seedV6Roster.ts",
     "validate:experiment": "tsx scripts/validateExperiment.ts",
     "import:walmart": "python3 scripts/importWalmartCsv.py"
   },

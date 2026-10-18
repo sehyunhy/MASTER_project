@@ -5,12 +5,35 @@ export function sequenceForIndex(index: number) {
   return (["S1", "S2", "S3", "S4"] as const)[index % 4];
 }
 
+export function v6RosterSlot(index: number, sequenceIds: readonly string[] = Object.keys(EXPERIMENT.sequences)) {
+  if (!Number.isInteger(index) || index < 0 || index >= 30 || sequenceIds.length !== 4) throw new Error("A roster slot needs an index from 0–29 and four sequences.");
+  // Six enrollment blocks of five. Start with two copies of the 4×4
+  // sequence/profile Latin rotation, then omit two disjoint cells. This gives
+  // each condition×profile pair 7–8 assignments, while sequence counts are
+  // 7–8. Enrollment is still performed and reported in blocks of five.
+  const oneCycle = sequenceIds.flatMap((sequenceId, sequenceIndex) =>
+    [0, 1, 2, 3].map(profileRotationOffset => ({ sequenceId, sequenceIndex, profileRotationOffset }))
+  );
+  const schedule = [...oneCycle, ...oneCycle].filter((slot,index) =>
+    !(index === 0 && slot.sequenceIndex === 0 && slot.profileRotationOffset === 0)
+    && !(index === 10 && slot.sequenceIndex === 2 && slot.profileRotationOffset === 2)
+  );
+  const { sequenceId, profileRotationOffset } = schedule[index];
+  return { sequenceId, profileRotationOffset, enrollmentBlock: Math.floor(index / EXPERIMENT.enrollmentBlockSize) + 1 };
+}
+
+/** @deprecated Legacy v5 name kept for historical tests and tools. */
+export const v5RosterSlot = v6RosterSlot;
+
 export function conditionAt(sequenceId: keyof typeof EXPERIMENT.sequences, trialNumber: number): ConditionId {
   return EXPERIMENT.sequences[sequenceId][trialNumber - 1] as ConditionId;
 }
 
 export function profileAt(trialNumber: number, sequenceIndex: number, profileVersion = "profiles-v1"): string {
   const base = `R${((trialNumber - 1 + sequenceIndex) % 4) + 1}`;
+  if (profileVersion === "profiles-v3-relationship-types") return `${base}v3`;
+  if (profileVersion === "profiles-v3-neutral-v5") return `${base}v5`;
+  if (profileVersion === "profiles-v3-neutral-v6") return `${base}v5`;
   return profileVersion === "profiles-v2" ? `${base}v2` : base;
 }
 

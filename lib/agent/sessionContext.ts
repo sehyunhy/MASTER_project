@@ -20,14 +20,14 @@ export async function loadAgentSessionContext(db:any,trialId:string,candidateOve
     .eq("experiment_eligible",true).eq("is_active",true)
     .contains("profile_codes",[profile.profile_code]).lte("price_experiment",profile.gift_budget);
   if(catalogError)throw catalogError;
-  const approvedRelationshipCopy=await loadApprovedRelationshipCopy(db);
+  const approvedRelationshipCopy=trial.experiment_version==="6.0.0"?null:await loadApprovedRelationshipCopy(db);
   const usedCandidates=candidateOverride??candidates??[];
   return {
     trialId,condition:trial.condition_id,phase:trial.current_phase,executionAutonomy:trial.execution_autonomy,
     decisionAuthority:trial.decision_authority,participantRole:participant.role,recipientRole:"recipient",
-    relationship:relationshipForParticipant(participant.intimacy_condition,participant.role,approvedRelationshipCopy),
+    relationship:trial.experiment_version==="6.0.0"?null:relationshipForParticipant(participant.intimacy_condition,participant.role,approvedRelationshipCopy,{version:trial.profile_version,name:profile.name,relationshipType:trial.relationship_type}),
     stimulusVersion:trial.stimulus_version,scenarioId:trial.scenario_id,
-    profile:{name:profile.name,age:profile.age,occupation:profile.occupation,hobbies:profile.hobbies,
+    profile:{name:profile.name,age:profile.age,gender:profile.gender,participantText:profile.participant_text,hobbies:profile.hobbies,
       recentInterest:profile.recent_interest,preference:profile.preference,dislike:profile.dislike,
       giftOccasion:profile.gift_occasion,lifestyleContext:profile.lifestyle_context},
     budget:profile.gift_budget,category:state?.selected_category??null,

@@ -16,6 +16,10 @@ const profileTags: Record<string, string[]> = {
   R2v2: ["home","reading","textile","rest"],
   R3v2: ["photo","home","decor"],
   R4v2: ["cooking","dining","home"],
+  R1v3: ["daily","skincare","body-care"],
+  R2v3: ["home","reading","textile","rest"],
+  R3v3: ["photo","home","decor"],
+  R4v3: ["cooking","home","easy-care"],
 };
 const responseTags: Record<string, string[]> = {
   "취향 적합성": ["coffee","tea","reading","fitness","travel","photo","cooking","hobby"],

@@ -8,7 +8,7 @@ async function main() {
 
   const role = process.env.PARTICIPANT_ROLE === "recipient" ? "recipient" : "giver";
   // New study versions get new codes so earlier participants and trials remain intact.
-  const firstCodeNumber = EXPERIMENT.version === "4.0.0"
+  const firstCodeNumber = (EXPERIMENT.version as string) === "4.0.0"
     ? (role === "recipient" ? 121 : 81)
     : (role === "recipient" ? 41 : 1);
   const rows = Array.from({ length: 40 }, (_, index) => {

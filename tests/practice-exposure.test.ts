@@ -12,9 +12,9 @@ const event = (event_type: string, offsetMs: number, active?: boolean, effective
 });
 
 describe("role-specific practice exposure", () => {
-  it("uses 15 seconds in both practice roles while retaining 20 seconds in the experiment", () => {
+  it("keeps practice exposure separate from the 60-second v5 experimental phases", () => {
     assert.deepEqual(MINIMUM_EXPOSURE_MS.practice, { giver: 15_000, recipient: 15_000 });
-    assert.deepEqual(MINIMUM_EXPOSURE_MS.experiment, { giver: 20_000, recipient: 20_000 });
+    assert.deepEqual(MINIMUM_EXPOSURE_MS.experiment, { giver: 60_000, recipient: 60_000 });
   });
 
   it("counts a continuous visible 15 seconds", () => {

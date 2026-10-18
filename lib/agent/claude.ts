@@ -22,7 +22,7 @@ export async function interpretMessage(input:{text:string;phase:string;condition
   const {api,model}=client();
   const response=await api.messages.create({
     model,max_tokens:350,...shortResponseOptions(model),
-    system:"You classify a Korean gift-shopping utterance for a controlled experiment. The current session context supplies the recipient profile, interests, preferences, dislikes, fixed budget, and assigned relationship condition; never ask the participant for those again. Never infer a relationship type, interaction history, or situation from a high/low condition; null relationship details remain unknown. Use only explicitly mentioned new preferences; never infer demographics or alter scenario/budget. A standalone mention of 실용성, 취향 적합성, 감성적 (legacy 개인적 의미) is a criteria_update with that selection_priority, even if no product tag is available. final_choice requires an unambiguous ordinal 1-3. A request to compare is compare_request; a request to find/recommend candidates is search_request. If ambiguous, clarify only the user's new request. Return exactly one interpret_message tool call.",
+    system:"You classify a Korean gift-shopping utterance for a controlled experiment. The current session context supplies the recipient profile, interests, preferences, dislikes, fixed budget, and assigned relationship condition; never ask the participant for those again. Never infer a relationship type, interaction history, or situation from a high/low condition; null relationship details remain unknown. Use only explicitly mentioned new preferences; never infer demographics or alter scenario/budget. Gender is researcher assigned context, not evidence of product preference; never infer tastes from it. A standalone mention of 실용성, 취향 적합성, 감성적 (legacy 개인적 의미) is a criteria_update with that selection_priority, even if no product tag is available. final_choice requires an unambiguous ordinal 1-3. A request to compare is compare_request; a request to find/recommend candidates is search_request. If ambiguous, clarify only the user's new request. Return exactly one interpret_message tool call.",
     messages:[{role:"user",content:JSON.stringify(input)}],
     tools:[{name:"interpret_message",description:"Classify intent and explicit filters",input_schema:{type:"object",properties:{intent:{type:"string",enum:["criteria_update","search_request","compare_request","explain","final_choice","clarify"]},selected_category:{type:["string","null"]},preference_tags:{type:"array",items:{type:"string"}},selection_priority:{type:["string","null"],enum:["취향 적합성","실용성","감성적","개인적 의미",null]},final_ordinal:{type:["integer","null"]},clarification:{type:["string","null"]}},required:["intent","selected_category","preference_tags","selection_priority","final_ordinal","clarification"]}}],
     tool_choice:{type:"tool",name:"interpret_message"},
@@ -51,7 +51,7 @@ export async function explainWithCatalogTools(input:{db:any;trialId:string;profi
     {name:"compare_products",description:"Read factual fields of two or three current candidates",input_schema:{type:"object",properties:{source_product_ids:{type:"array",items:{type:"string"},minItems:2,maxItems:3}},required:["source_product_ids"]}},
   ];
   const availableTools=input.candidateIds.length?tools.filter(tool=>tool.name!=="search_products"):tools.filter(tool=>tool.name==="search_products");
-  const system=`You are a gift research assistant in the current saved experiment session. The recipient profile, age, interests, preferences, dislikes, budget, assigned relationship condition, and catalog scope are already given below; never ask the participant for them again. Use only the relationship facts supplied in session context. High/low intimacy alone does not establish a relationship type, interaction history, or situation; never invent these or default a missing condition to high. Treat the current selection criteria as additive to that profile. Candidate IDs may be empty before initial search; that never means the catalog is unavailable. Search only the constrained product catalog for this profile, dataset and fixed budget. After candidates exist, explain only those persisted DB candidates. You may explain only verified tool results. Do not invent products, prices, capabilities, sizes, availability or effects. CSV prices are August 2024 USD historical snapshots; experiment KRW is a fixed study conversion. Do not claim live sale availability. Never change the fixed budget or the actor's authority. Never include product names, prices or specifications in the free-text response; the server displays them from DB cards. Use neutral Korean and say 정보 없음 when needed. Current saved session context: ${JSON.stringify(input.sessionContext)}.`;
+  const system=`You are a gift research assistant in the current saved experiment session. The recipient profile, age, interests, preferences, dislikes, budget, assigned relationship condition, and catalog scope are already given below; never ask the participant for them again. Use only the relationship facts supplied in session context. Do not infer product preferences from gender; rely on explicit interests, preferences and verified product facts. High/low intimacy alone does not establish a relationship type, interaction history, or situation; never invent these or default a missing condition to high. Treat the current selection criteria as additive to that profile. Candidate IDs may be empty before initial search; that never means the catalog is unavailable. Search only the constrained product catalog for this profile, dataset and fixed budget. After candidates exist, explain only those persisted DB candidates. You may explain only verified tool results. Do not invent products, prices, capabilities, sizes, availability or effects. CSV prices are August 2024 USD historical snapshots; experiment KRW is a fixed study conversion. Do not claim live sale availability. Never change the fixed budget or the actor's authority. Never include product names, prices or specifications in the free-text response; the server displays them from DB cards. Use neutral Korean and say 정보 없음 when needed. Current saved session context: ${JSON.stringify(input.sessionContext)}.`;
   const messages:any[]=[{role:"user",content:input.question}];
   const toolCalls:string[]=[];
   let toolFailed=false;
@@ -107,7 +107,7 @@ export async function composeCandidateIntroduction(candidates:any[],sessionConte
   const {api,model}=client();
   const facts=candidates.map(item=>({source_product_id:item.product_snapshot?.source_product_id,original_name:item.product_snapshot?.product_name_original,category:item.product_snapshot?.category,price_experiment:item.product_snapshot?.price,fit_reason:item.product_snapshot?.fit_reason}));
   const response=await api.messages.create({model,max_tokens:250,...shortResponseOptions(model),
-    system:"Select all three provided product IDs in their exact order and select one focus. You must not add products or facts. Use only saved relationship context; do not infer relationship type or history from high/low intimacy, and never default an unknown condition to high. The server renders names/prices/specs from its database.",
+    system:"Select all three provided product IDs in their exact order and select one focus. You must not add products or facts. Never infer preferences from gender. Use only saved relationship context; do not infer relationship type or history from high/low intimacy, and never default an unknown condition to high. The server renders names/prices/specs from its database.",
     messages:[{role:"user",content:JSON.stringify({sessionContext,facts})}],
     tools:[{name:"present_recommendation",description:"Choose only verified candidate IDs and a neutral comparison focus",input_schema:{type:"object",properties:{source_product_ids:{type:"array",items:{type:"string"},minItems:3,maxItems:3},focus:{type:"string",enum:["관심사","실용성","예산"]}},required:["source_product_ids","focus"]}}],
     tool_choice:{type:"tool",name:"present_recommendation"}});
@@ -117,19 +117,56 @@ export async function composeCandidateIntroduction(candidates:any[],sessionConte
   return `기록된 상품 세 가지를 ${parsed.data.focus} 기준으로 살펴볼 수 있습니다. 상품명·가격·규격은 아래 DB 스냅샷을 확인해 주세요.`;
 }
 
-const finalChoiceSchema=z.object({source_product_id:z.string().min(1),reason_focus:z.enum(["관심사","실용성","예산"])});
+const finalChoiceSchema=z.object({source_product_id:z.string().min(1),reason_text:z.string().trim().min(20).max(500)});
+const candidateSetSchema=z.object({source_product_ids:z.array(z.string().min(1)).length(3)}).refine(value=>new Set(value.source_product_ids).size===3);
+/** Agent selects three IDs from the bounded, server-filtered DB pool. */
+export async function chooseCatalogCandidatesWithClaude(products:any[],sessionContext:Record<string,unknown>):Promise<{sourceProductIds:string[];model:string}>{
+  if(products.length<3)throw new Error("CANDIDATE_POOL_TOO_SMALL");
+  const {api,model}=client();
+  const facts=products.map(item=>({source_product_id:item.source_product_id,category:item.category,product_name:item.product_name_ko??item.product_name_original,price:item.price_experiment,description:String(item.description_ko??item.description_original??"").slice(0,700),search_tags:item.search_tags_ko??[]}));
+  const response=await api.messages.create({model,max_tokens:220,...shortResponseOptions(model),
+    system:"Choose exactly three different source_product_id values from the supplied catalog pool for the gift. Use the saved recipient preferences, budget and criteria. Do not invent or alter IDs, prices, attributes, or product claims. Return only the required tool call.",
+    messages:[{role:"user",content:JSON.stringify({sessionContext,catalogPool:facts})}],
+    tools:[{name:"select_candidate_set",description:"Select three distinct products from the supplied allowed catalog pool",input_schema:{type:"object",properties:{source_product_ids:{type:"array",items:{type:"string"},minItems:3,maxItems:3}},required:["source_product_ids"]}}],
+    tool_choice:{type:"tool",name:"select_candidate_set"}});
+  const block=response.content.find((part:any)=>part.type==="tool_use"&&part.name==="select_candidate_set") as any;
+  const parsed=candidateSetSchema.safeParse(block?.input);
+  if(!parsed.success||parsed.data.source_product_ids.some(id=>!facts.some(item=>item.source_product_id===id)))throw new Error("CLAUDE_CANDIDATE_ID_OUTSIDE_ALLOWED_POOL");
+  return {sourceProductIds:parsed.data.source_product_ids,model};
+}
+
+const oneCandidateSchema=z.object({source_product_id:z.string().min(1),recipient_evidence:z.string().min(2),candidate_direction:z.string().min(2)});
+/** Return one DB product for one participant-authored candidate request. */
+export async function chooseOneCatalogCandidateWithClaude(products:any[],sessionContext:Record<string,unknown>,requestText:string):Promise<{sourceProductId:string;recipientEvidence:string;candidateDirection:string;model:string;responseId:string;latencyMs:number}>{
+  if(!products.length)throw new Error("CANDIDATE_POOL_TOO_SMALL");
+  const {api,model}=client();
+  const facts=products.map(item=>({source_product_id:item.source_product_id,category:item.category,product_name:item.product_name_ko??item.product_name_original,price:item.price_experiment,description:String(item.description_ko??item.description_original??"").slice(0,500),search_tags:item.search_tags_ko??[]}));
+  const started=Date.now();
+  const response=await api.messages.create({model,max_tokens:120,...shortResponseOptions(model),
+    system:"For this single candidate slot, select exactly one source_product_id from the verified catalog records. The participant-authored request and current recipient profile are both provided. Identify recipient_evidence as a verbatim phrase copied from the supplied profile and candidate_direction as a verbatim phrase copied from the participant request. The server verifies both exact phrases. Prefer a catalog product supported by the request's concrete direction. Do not invent or alter product facts, price, or IDs. Do not generate a second option or take a final-gift decision. Return only the required tool call.",
+    messages:[{role:"user",content:JSON.stringify({sessionContext,recipientProfile:sessionContext.profile,participantRequest:requestText,catalogPool:facts})}],
+    tools:[{name:"select_one_candidate",description:"Select one product and point to the exact profile phrase and request phrase that ground the choice",input_schema:{type:"object",properties:{source_product_id:{type:"string"},recipient_evidence:{type:"string"},candidate_direction:{type:"string"}},required:["source_product_id","recipient_evidence","candidate_direction"]}}],
+    tool_choice:{type:"tool",name:"select_one_candidate"}});
+  const block=response.content.find((part:any)=>part.type==="tool_use"&&part.name==="select_one_candidate") as any;
+  const parsed=oneCandidateSchema.safeParse(block?.input);
+  const profile=JSON.stringify(sessionContext.profile??{}).toLocaleLowerCase("ko-KR");
+  if(!parsed.success||!facts.some(item=>item.source_product_id===parsed.data.source_product_id))throw new Error("CLAUDE_CANDIDATE_ID_OUTSIDE_ALLOWED_POOL");
+  if(!profile.includes(parsed.data.recipient_evidence.toLocaleLowerCase("ko-KR"))||!requestText.toLocaleLowerCase("ko-KR").includes(parsed.data.candidate_direction.toLocaleLowerCase("ko-KR")))throw new Error("CLAUDE_CANDIDATE_GROUNDING_INVALID");
+  return {sourceProductId:parsed.data.source_product_id,recipientEvidence:parsed.data.recipient_evidence,candidateDirection:parsed.data.candidate_direction,model:response.model,responseId:response.id,latencyMs:Date.now()-started};
+}
 /** AI may choose only one of the three persisted trial candidates. */
-export async function chooseFinalProductWithClaude(candidates:any[],sessionContext:Record<string,unknown>):Promise<{sourceProductId:string;reasonFocus:string;model:string}>{
+export async function chooseFinalProductWithClaude(candidates:any[],sessionContext:Record<string,unknown>):Promise<{sourceProductId:string;reasonText:string;model:string;responseId:string;latencyMs:number}>{
   if(candidates.length!==3)throw new Error("CANDIDATES_NOT_READY");
   const {api,model}=client();
   const facts=candidates.map(item=>({source_product_id:item.product_snapshot?.source_product_id,category:item.product_snapshot?.category,price_experiment:item.product_snapshot?.price,fit_reason:item.product_snapshot?.fit_reason}));
-  const response=await api.messages.create({model,max_tokens:200,...shortResponseOptions(model),
-    system:"Choose exactly one of the three verified candidate source IDs for the gift. Use only the supplied product and relationship facts, with neutral judgment. Do not invent relationship type or history from high/low intimacy, and never default an unknown condition to high. Never invent an ID or change the budget. Call choose_final_product once.",
+  const started=Date.now();
+  const response=await api.messages.create({model,max_tokens:350,...shortResponseOptions(model),
+    system:"Choose exactly one of the three verified candidate source IDs for the gift. Write a concise Korean reason grounded in explicit recipient profile facts and verified product fields provided. Mention why this item fits and do not claim unprovided benefits, suitability, product features, prices, availability, or effects. Never infer preferences from gender. Never invent relationship type or history from intimacy. Never invent an ID or change the budget. The person cannot revise this final decision. Call choose_final_product once.",
     messages:[{role:"user",content:JSON.stringify({sessionContext,facts})}],
-    tools:[{name:"choose_final_product",description:"Choose a final verified product",input_schema:{type:"object",properties:{source_product_id:{type:"string"},reason_focus:{type:"string",enum:["관심사","실용성","예산"]}},required:["source_product_id","reason_focus"]}}],
+    tools:[{name:"choose_final_product",description:"Choose one verified product and provide a short evidence-based reason in Korean",input_schema:{type:"object",properties:{source_product_id:{type:"string"},reason_text:{type:"string"}},required:["source_product_id","reason_text"]}}],
     tool_choice:{type:"tool",name:"choose_final_product"}});
   const block=response.content.find((part:any)=>part.type==="tool_use"&&part.name==="choose_final_product") as any;
   const parsed=finalChoiceSchema.safeParse(block?.input);
   if(!parsed.success||!facts.some(item=>item.source_product_id===parsed.data.source_product_id))throw new Error("AI_FINAL_PRODUCT_NOT_IN_TRIAL");
-  return {sourceProductId:parsed.data.source_product_id,reasonFocus:parsed.data.reason_focus,model};
+  return {sourceProductId:parsed.data.source_product_id,reasonText:parsed.data.reason_text,model:response.model,responseId:response.id,latencyMs:Date.now()-started};
 }
