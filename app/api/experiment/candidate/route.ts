@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
-import { isBroadDelegation, preflightHumanRequest, planProductSearch, proposeOne, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
+import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
 import { searchLiveProducts } from "@/lib/study/live-shopping";
-import { rankedCatalog } from "@/lib/study/catalog";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
 export const maxDuration = 120;
@@ -27,18 +26,6 @@ export async function POST(request: Request) {
     const { trial } = await trialFor(db, personId, "giver", body.trialId);
     const profile = profileFor(trial.profile_code);
     if (!profile) throw new Error("PROFILE_MISSING");
-    const pool: StudyProduct[] = [];
-    if (body.task !== "final") {
-      for (let offset=0;;offset+=1000) {
-        const { data: products, error: catalogError } = await db.from("study_products").select("*")
-          .eq("reviewed", true).contains("profile_codes", [trial.profile_code])
-          .lte("price_krw", profile.gift_budget).not("dataset_version","like","live-web-%")
-          .order("source_product_id").range(offset,offset+999);
-        if (catalogError) throw catalogError;
-        pool.push(...(products ?? []) as StudyProduct[]);
-        if (!products || products.length<1000) break;
-      }
-    }
     if (body.task === "one") {
       const requestText = body.request?.trim() ?? "";
       const guidance = preflightHumanRequest(requestText, profile);
@@ -70,31 +57,20 @@ export async function POST(request: Request) {
       await logStudyEvent(db, { personId, trial, type: "candidate_request_sent", key: body.key,
         payload: { slot: trial.candidate_snapshots.length + 1, request: requestText } });
       const existing = trial.candidate_snapshots as StudyProduct[];
-      const plan=await planProductSearch(requestText,profile);
-      const terms=plan.terms;
-      await logStudyEvent(db,{personId,trial,type:"catalog_search",payload:{
-        terms,catalog_size:pool.length,request:requestText,
-        model:plan.model,response_id:plan.responseId,latency_ms:plan.latencyMs,
+      const live = await searchLiveProducts({request:requestText,profile,
+        excludedIds:existing.map(item=>item.source_product_id)});
+      await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{
+        source:"web_search",mode:"human_one",model:live.model,response_id:live.responseId,
+        response_ids:live.responseIds,latency_ms:live.latencyMs,urls_seen:live.urlsSeen,
+        verified_product_ids:live.products.map(item=>item.source_product_id),
       }});
-      let available = rankedCatalog(pool.filter(item=>!existing.some(saved=>saved.source_product_id===item.source_product_id)),terms);
-      let result = available.length ? await proposeOne({ profile, condition: trial.condition, products: available,
-        existing, request: requestText }) : null;
-      if (!result?.value.valid_request) {
-        const live = await searchLiveProducts({ request:requestText, profile,
-          excludedIds:existing.map(item=>item.source_product_id) });
-        await logStudyEvent(db, {personId,trial,type:"live_product_search",payload:{
-          source:"web_search",model:live.model,response_id:live.responseId,
-          latency_ms:live.latencyMs,urls_seen:live.urlsSeen,
-          verified_product_ids:live.products.map(item=>item.source_product_id),
-        }});
-        if (live.products.length) {
-          const savedProducts=await db.from("study_products").upsert(live.products,{onConflict:"source_product_id"});
-          if (savedProducts.error) throw savedProducts.error;
-          available=live.products;
-          result=await proposeOne({profile,condition:trial.condition,products:available,
-            existing,request:requestText});
-        }
+      const available=live.products;
+      if (available.length) {
+        const savedProducts=await db.from("study_products").upsert(available,{onConflict:"source_product_id"});
+        if (savedProducts.error) throw savedProducts.error;
       }
+      const result=available.length ? await proposeOne({profile,condition:trial.condition,
+        products:available,existing,request:requestText}) : null;
       if (!result?.value.valid_request) {
         const clarification = "요청하신 방향의 상품을 현재 확인 가능한 판매 페이지에서 찾지 못했습니다. 같은 후보에서 요청을 다듬어 다시 시도해 주세요.";
         const clarificationMessage = await db.from("study_messages").insert({ trial_id: trial.id, phase: "candidates", speaker: "agent",
@@ -121,29 +97,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ proposal: saved.data });
     }
     if (body.task === "batch") {
-      const plan=await planProductSearch(`${profile.hobbies.join(", ")}, ${profile.recent_interest}, ${profile.preference}에 맞는 선물`,profile);
-      const terms=plan.terms;
-      const curated=pool.filter(item=>(item as StudyProduct & {dataset_version?:string}).dataset_version==="walmart-2024-08-study-v7");
-      let available=[...curated,...rankedCatalog(pool,terms,30).filter(item=>!curated.some(saved=>saved.source_product_id===item.source_product_id))];
-      await logStudyEvent(db,{personId,trial,type:"catalog_search",payload:{terms,catalog_size:pool.length,
-        matched_count:available.length,mode:"agent_batch",model:plan.model,
-        response_id:plan.responseId,latency_ms:plan.latencyMs}});
-      try {
-        const live = await searchLiveProducts({request:`${profile.hobbies.join(", ")}, ${profile.recent_interest}, ${profile.preference}에 맞는 선물`,
-          profile,excludedIds:[]});
-        if (live.products.length) {
-          const savedProducts=await db.from("study_products").upsert(live.products,{onConflict:"source_product_id"});
-          if (savedProducts.error) throw savedProducts.error;
-          available=[...available,...live.products.filter(item=>!available.some(saved=>saved.source_product_id===item.source_product_id))];
-        }
-        await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{source:"web_search",
-          model:live.model,response_id:live.responseId,latency_ms:live.latencyMs,
-          urls_seen:live.urlsSeen,verified_product_ids:live.products.map(item=>item.source_product_id)}});
-      } catch (searchError) {
-        console.error("Optional batch web search failed",{trialId:trial.id,cause:searchError});
-        if (available.length<3) throw searchError;
-      }
-      if (available.length<3) throw new Error("APPROVED_POOL_INCOMPLETE");
+      const live=await searchLiveProducts({request:`${profile.hobbies.join(", ")}, ${profile.recent_interest}, ${profile.preference}에 맞는 생일 선물 세 가지`,
+        profile,excludedIds:[],minimum:3});
+      const available=live.products;
+      await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{source:"web_search",
+        mode:"agent_batch",model:live.model,response_id:live.responseId,latency_ms:live.latencyMs,
+        response_ids:live.responseIds,urls_seen:live.urlsSeen,
+        verified_product_ids:available.map(item=>item.source_product_id)}});
+      if (available.length<3) throw new Error("LIVE_PRODUCTS_INCOMPLETE");
+      const savedProducts=await db.from("study_products").upsert(available,{onConflict:"source_product_id"});
+      if (savedProducts.error) throw savedProducts.error;
       const result = await proposeThree({ profile, condition: trial.condition, products: available });
       const evidenceQuotes=Object.fromEntries(result.value.product_ids.map((id,index)=>[id,
         verifiedEvidence(available.find(item=>item.source_product_id===id)!,result.value.evidence_quotes[index])]));

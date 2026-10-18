@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, logStudyEvent } from "@/lib/study/server";
+import { RECIPIENT_STIMULUS_VERSION } from "@/lib/study/recipient-context";
 
 const schema = z.object({
   role: z.enum(["giver", "recipient"]), trialId: z.uuid(), type: z.enum([
@@ -36,6 +37,13 @@ export async function POST(request: Request) {
     let result: any;
     if (body.type === "activate") {
       if (!body.key) throw new Error("REQUEST_KEY_REQUIRED");
+      if (body.role === "recipient" && !trial.stimulus_id) {
+        const {data:stimulus,error:stimulusError}=await db.from("study_stimuli")
+          .select("id").eq("profile_code",trial.profile_code).eq("condition",trial.condition)
+          .eq("stimulus_version",RECIPIENT_STIMULUS_VERSION).not("approved_at","is",null).maybeSingle();
+        if (stimulusError) throw stimulusError;
+        if (!stimulus) throw new Error("APPROVED_STIMULUS_MISSING");
+      }
       const response = await db.rpc("study_activate", {
         p_person_id: person.id, p_trial_id: trial.id, p_code: body.code ?? "", p_attempt_key: body.key,
       });

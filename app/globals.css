@@ -51,6 +51,7 @@
 .study-profile-center h2 { font-size: 30px; margin: 16px 0 3px; }.study-profile-center p { margin: 0; line-height: 1.5; }
 .study-profile-actions { padding: 0 26px; }.study-profile-actions button { width: 100%; padding: 17px; border: 1px solid #d6dee9; border-radius: 12px; background: #ffffff22; color: #fff; cursor: pointer; font-size: 20px; font-weight: 800; }.study-profile-actions button span { margin-right: 10px; }.study-profile-actions button:disabled { opacity: .5; }
 .study-profile-paper { margin: 25px 26px; padding: 20px; border-radius: 20px; background: #f1f6ff; color: #315275; line-height: 1.7; }.study-profile-paper p { margin: 7px 0 0; }
+.study-profile-paper .study-recipient-story { white-space: pre-line; }
 @media (max-width: 900px) { .study-entry { grid-template-columns: 1fr; gap: 20px; align-items: start; }.study-entry-guide { max-width: 620px; width: 100%; justify-self: center; padding: 23px; }.study-phone-frame { height: min(760px,90svh); }.study-demo-caption { margin-top: 5px; } }
 @media (max-width: 600px) { .study-entry { padding: 0; gap: 0; }.study-entry-guide { border-radius: 0; box-shadow: none; }.study-phone-area { padding: 18px 0; }.study-phone-frame { width: min(100%,480px); min-height: 600px; height: 78svh; border-radius: 30px; border-width: 6px; }.study-phone-screen { border-radius: 22px; }.study-friends-icons { letter-spacing: 3px; } }
 :root { color-scheme: light; --ink: #222d35; --muted: #65727b; --line: #dfe5e8; --paper: #f6f8f8; --accent: #496b67; }
@@ -68,6 +69,11 @@ button, input { font: inherit; }
 .field { display: block; width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 8px 0 16px; background: white; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 14px; }
 .card { border: 1px solid var(--line); border-radius: 14px; padding: 18px; background: white; }
+.study-admin-stimulus { margin-top:24px; padding:20px; border:1px solid var(--line); border-radius:14px; }
+.study-admin-products { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:18px 0; }
+.study-admin-products .card { min-width:0; overflow-wrap:anywhere; }
+.study-admin-products img { display:block; width:100%; height:160px; object-fit:contain; margin:12px 0; background:#f1f5f9; }
+.study-admin-products .card p { max-height:5.6em; overflow:auto; line-height:1.4; }
 /* Current study: a single vertical chat, with its controls pinned to the phone frame. */
 .study-experience{min-height:100svh;display:grid;grid-template-columns:minmax(270px,390px) minmax(0,700px);align-items:center;justify-content:center;gap:clamp(20px,5vw,80px);padding:20px 26px;background:#f2f5fa;color:#1b304e}
 .study-side{padding:30px;border:1px solid #d9e4f3;border-radius:26px;background:#fff;box-shadow:0 18px 48px #1c365015}

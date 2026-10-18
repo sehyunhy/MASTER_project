@@ -1,7 +1,7 @@
 -- New study only. Run in Supabase SQL Editor when ready to erase ALL prior
--- participant, stimulus, event and Walmart catalog rows. This does not migrate
+-- participant, stimulus, event and product rows. This does not migrate
 -- or import any old DB records. Product rows are seeded separately from the
--- user-supplied walmart-products.csv in study-products.sql.
+-- Previous CSV products are not part of the active live-search setup.
 -- A failed statement rolls back the complete reset.
 begin;
 create extension if not exists pgcrypto;

@@ -318,7 +318,7 @@ export function Experiment({ role }: { role: Role }) {
     <aside className="study-side">
       <h1>🎁 선물 선택 연구</h1>
       <p>{role==="giver"?"선물 주는 사람 · P01":"선물 받는 사람 · P02"} · 참가자 #{state?.person.enrollmentNumber??"…"}</p>
-      <section><h2>진행 안내</h2><p>종이 자료 {trial?.profile_code??"…"} · {state?.profile.name??"…"}</p><p>{role==="giver"?"종이로 받은 선물 대상 자료를 읽어 주세요. 상품 후보와 Agent 대화는 오른쪽 화면에서 진행합니다.":"연구자가 구성하고 검토한 선물 선택 과정을 관찰합니다. 화면 속 선물 주는 사람의 행동은 당신의 행동으로 기록되지 않습니다."}</p></section>
+      <section><h2>진행 안내</h2><p>{role==="giver"?`종이 자료 ${trial?.profile_code??"…"} · ${state?.profile.name??"…"}`:"친구 A · 당신의 생일 선물"}</p><p>{role==="giver"?"종이로 받은 선물 대상 자료를 읽어 주세요. 상품 후보와 Agent 대화는 오른쪽 화면에서 진행합니다.":"네 상황은 같은 친구가 같은 생일 선물을 준비하는 장면입니다. 선물을 고르는 방식만 달라집니다. 화면 속 친구 A의 행동은 연구자가 구성한 시나리오입니다."}</p></section>
       <section><h2>현재 조건</h2><strong>{trial?.condition??"…"} · {trial ? conditionLabel[trial.condition] : ""}</strong><p>{trial?.order_position??"…"} / 4조건</p></section>
       <section><h2>시간 규칙</h2><p>한 조건의 후보 3개는 하나의 후보 단계에서 만듭니다. 후보 한 개마다 시간이 새로 시작하지 않습니다. 후보 단계와 최종 단계에 각각 유효 노출 60–180초를 적용합니다. 시간초과 시 미완료로 기록하고 다음 조건으로 진행할 수 있습니다.</p></section>
       <a href="/start">친구 화면으로</a>
@@ -332,7 +332,7 @@ export function Experiment({ role }: { role: Role }) {
         </header>
         <div className="study-chat-scroll">
           {!state && <p className="study-chat-notice">연구 상태를 불러오는 중입니다.</p>}
-          {state && <div className="study-chat-divider">종이 자료 {trial?.profile_code} · {state.profile.name} 확인 · 예산 {state.profile.gift_budget.toLocaleString()}원</div>}
+          {state && <div className="study-chat-divider">{role==="giver"?`종이 자료 ${trial?.profile_code} · ${state.profile.name} 확인 · 예산 ${state.profile.gift_budget.toLocaleString()}원`:"당신의 생일 · 친구 A · 네 상황에서 같은 선물"}</div>}
           {visibleTrials.map(item => <div key={item.id}>
             <div className="study-chat-divider">조건 {item.condition} 시작 · {conditionLabel[item.condition]}</div>
             <div className="study-chat-divider is-phase">1단계 · 후보 만들기</div>
@@ -362,7 +362,7 @@ export function Experiment({ role }: { role: Role }) {
                   <button type="submit" disabled={busy||!draft.trim()}>후보 한 개 요청</button></form>}
               </div>}
               {role==="giver" && item.candidate_builder==="agent" && currentCount===0 && <div className="study-chat-control">
-                <p>Agent가 기록된 상품과 확인 가능한 쇼핑 상품 정보에서 후보 세 개를 준비합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
+                <p>Agent가 실시간 쇼핑 검색으로 확인한 상품에서 후보 세 개를 준비합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
               {role==="recipient" && <div className="study-chat-control"><p>연구자가 구성한 대화와 후보를 관찰해 주세요. 화면 속 요청과 클릭은 당신의 행동으로 기록되지 않습니다.</p></div>}
               {role==="giver" && item.candidate_builder==="human" && currentCount===3 &&
                 <div className="study-chat-control"><div className="study-product-grid">{item.candidate_snapshots.map(product=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div></div>}

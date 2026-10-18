@@ -7,7 +7,7 @@ export type StudyProduct = {
   description_original: string; category: string; price_krw: number;
 };
 export type StudyProfile = {
-  name: string; age: number; hobbies: string[]; recent_interest: string;
+  name: string; age?: number; hobbies: string[]; recent_interest: string;
   preference: string; dislike: string; gift_budget: number;
 };
 
@@ -37,9 +37,6 @@ async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input
 }
 
 function schemaToToolProperties(name: string): Record<string, unknown> {
-  if (name === "plan_product_search") return {
-    english_terms: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
-  };
   if (name === "propose_one") return {
     valid_request: { type: "boolean" }, clarification: { type: "string" },
     product_id: { type: "string" }, evidence_quote: { type: "string" },
@@ -52,7 +49,6 @@ function schemaToToolProperties(name: string): Record<string, unknown> {
 }
 
 const oneSchema = z.object({ valid_request: z.boolean(), clarification: z.string(), product_id: z.string(), evidence_quote: z.string() });
-const searchPlanSchema = z.object({ english_terms: z.array(z.string().min(2).max(60)).min(1).max(8) });
 const batchSchema = z.object({ product_ids: z.array(z.string()).length(3), evidence_quotes: z.array(z.string()).length(3) });
 const finalSchema = z.object({ product_id: z.string(), evidence_quote: z.string() });
 
@@ -85,15 +81,6 @@ export function preflightHumanRequest(text: string, _profile: StudyProfile) {
   if (!normalized || isBroadDelegation(normalized))
     return "찾고 싶은 상품이나 사용 상황을 직접 적어 주세요. 모든 후보를 Agent에게 맡기는 요청은 사용할 수 없습니다.";
   return null;
-}
-
-export async function planProductSearch(request: string, profile: StudyProfile) {
-  const result = await structured("plan_product_search",searchPlanSchema,{
-    instructions:"Translate the participant's Korean gift request into concise English shopping search terms. Preserve the requested product type and concrete attributes. Return product nouns and useful synonyms, not generic words such as gift, present, product, person or recommendation. A request can differ from the recipient profile; do not replace it with the profile's interests. The server uses these terms only to rank recorded product fields.",
-    context:{recipient:profile},fields:{participant_request:request},
-  });
-  return {terms:result.value.english_terms.map(term=>term.trim().toLowerCase()).filter(Boolean),
-    model:result.model,responseId:result.responseId,latencyMs:result.latencyMs};
 }
 
 const common = (profile: StudyProfile, condition: string, products: StudyProduct[], existing: StudyProduct[]) => ({

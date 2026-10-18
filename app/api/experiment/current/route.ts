@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { studySession, profileFor, trialFor } from "@/lib/study/server";
 import { visibleRecipientMessages, visibleRecipientTrial } from "@/lib/study/visibility";
+import { RECIPIENT_SEARCH_PROFILE } from "@/lib/study/recipient-context";
 
 export async function GET(request: Request) {
   try {
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
     const ids = visible.map((item: any) => item.id);
     const { data: messages, error } = await db.from("study_messages").select("*").in("trial_id", ids).order("id");
     if (error) throw error;
-    const profile = profileFor(trial.profile_code);
+    const profile = role === "recipient" ? RECIPIENT_SEARCH_PROFILE : profileFor(trial.profile_code);
     if (!profile) throw new Error("PROFILE_MISSING");
     const currentMessages = role === "recipient" ? (messages ?? []).filter((message: any) => {
       const owner = visible.find((item: any) => item.id === message.trial_id);
