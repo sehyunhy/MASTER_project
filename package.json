@@ -6,13 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "clear:mock": "tsx scripts/clearMockExperiment.ts",
-    "seed:assignments": "tsx scripts/seedAssignments.ts",
-    "seed:v6-roster": "tsx scripts/seedV6Roster.ts",
-    "validate:experiment": "tsx scripts/validateExperiment.ts",
-    "import:walmart": "python3 scripts/importWalmartCsv.py"
+    "test": "node --import tsx --test tests/study-*.test.ts tests/supabase-env.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

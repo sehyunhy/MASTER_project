@@ -1,12 +1,23 @@
 "use client";
-import { useEffect,useState } from "react";
-import { deriveBehaviorMetrics } from "@/lib/experiment/behavior";
-const label=(key:string)=>({total_task_time_ms:"Total task time",human_active_time_ms:"Human active time",system_processing_time_ms:"System processing",candidate_inspection_time_ms:"Candidate inspection",active_candidate_inspection_time_ms:"Active inspection",candidate_interaction_count:"Candidate opens",candidate_revisit_count:"Candidate revisits",comparison_time_ms:"Comparison time",final_choice_latency_ms:"Final choice latency",guided_total_response_time_ms:"Guided response total",guided_mean_response_time_ms:"Guided response mean",guided_answer_revision_count:"Guided revisions",final_choice_revision_count:"Final choice revisions",visibility_hidden_time_ms:"Tab hidden",refresh_count:"Refreshes",error_count:"Errors"} as Record<string,string>)[key]??key;
-const format=(n:number|null)=>n===null||n===undefined?"N/A":n>=1000?`${(n/1000).toFixed(1)} sec`:String(n);
-export default function ParticipantDetail({params}:{params:Promise<{id:string}>}){
-  const [id,setId]=useState("");const [data,setData]=useState<any>(null);const [error,setError]=useState("");
-  useEffect(()=>{params.then(p=>setId(p.id));},[params]);
-  useEffect(()=>{if(!id)return;const password=sessionStorage.getItem("adminPassword")??"";fetch(`/api/admin/participants/${id}`,{headers:{"x-admin-password":password}}).then(r=>r.json()).then(d=>{if(d.error)throw new Error(d.error);setData(d.participant);}).catch(e=>setError(e.message));},[id]);
-  if(error)return <main className="shell"><div className="panel">{error}</div></main>;if(!data)return <main className="shell"><div className="panel">참가자 정보를 불러오는 중…</div></main>;
-  return <main className="shell"><div className="panel"><p className="eyebrow">{data.is_mock?"MOCK DATA":"REAL DATA"}</p><h1 className="title">{data.participant_code}</h1><p>{data.role} · {data.intimacy_condition} · {data.sequence_id} · {data.status}</p><p className="body">Version {data.experiment_version} · Training attempts {data.training_attempts?.length??0}</p><p className="eyebrow">이 화면은 관찰 가능한 행동 로그를 요약합니다. 종이 설문의 심리척도나 감정은 계산하지 않습니다.</p><h2>Trials</h2>{data.trials?.sort((a:any,b:any)=>a.trial_number-b.trial_number).map((trial:any)=>{const events=[...(trial.event_logs??[])].sort((a:any,b:any)=>new Date(a.client_timestamp??a.server_timestamp??a.created_at).getTime()-new Date(b.client_timestamp??b.server_timestamp??b.created_at).getTime());const responses=trial.guided_responses??[];const rawMetrics=deriveBehaviorMetrics(events,responses,trial.decision_authority,trial.execution_autonomy==="human_guided",trial.status==="completed");const metrics=data.role==="recipient"?{...rawMetrics,human_active_time_ms:null,active_human_time_ms:null,final_choice_latency_ms:null,final_choice_revision_count:null,guided_total_response_time_ms:null,guided_mean_response_time_ms:null,guided_answer_revision_count:null}:rawMetrics;const selection=Array.isArray(trial.final_selections)?trial.final_selections[0]:trial.final_selections;const start=events.find((e:any)=>e.event_type==="profile_shown");const startMs=new Date(start?.client_timestamp??start?.server_timestamp??trial.started_at??Date.now()).getTime();return <article className="card" key={trial.id} style={{marginTop:14}}><h3>Trial {trial.trial_number} · {trial.recipient_profiles?.profile_code} · {trial.condition_id}</h3><p>{trial.execution_autonomy} / {trial.decision_authority} · {trial.status}</p><div className="grid">{Object.entries(metrics).filter(([k])=>["total_task_time_ms","human_active_time_ms","system_processing_time_ms","candidate_inspection_time_ms","active_candidate_inspection_time_ms","candidate_interaction_count","candidate_revisit_count","comparison_time_ms","active_comparison_time_ms","final_choice_latency_ms","guided_total_response_time_ms","guided_mean_response_time_ms","guided_answer_revision_count","final_choice_revision_count","refresh_count","visibility_hidden_time_ms","error_count"].includes(k)).map(([k,v])=><div className="card" key={k}><p className="eyebrow">{label(k)}</p><b>{typeof v==="number"?format(v):v===null?"N/A":String(v)}</b></div>)}</div><p>Final selection: {trial.trial_candidates?.find((c:any)=>c.gift_candidate_id===selection?.selected_candidate_id)?.gift_candidates?.product_name??"Pending"} · selected_by: {selection?.selected_by??"N/A"}{data.role==="recipient"?" · 화면 속 선택(수혜자 행동 아님)":""}</p><h4>Trial timeline</h4><ol>{events.map((e:any,i:number)=>{const stamp=e.client_timestamp??e.server_timestamp??e.created_at;const elapsed=Math.max(0,new Date(stamp).getTime()-startMs);return <li key={e.id??i}><code>{`${Math.floor(elapsed/60000).toString().padStart(2,"0")}:${Math.floor(elapsed/1000%60).toString().padStart(2,"0")}`}</code> {e.event_type}{e.event_target?` · ${e.event_target}`:""}{e.event_value?` · ${e.event_value}`:""} [{e.event_origin??"기록 출처 미상"}]</li>})}</ol><details><summary>Guided responses and raw events</summary><pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify({responses,events},null,2)}</pre></details></article>})}</div></main>;
+import { useEffect, useState } from "react";
+export default function ParticipantPage({params}:{params:Promise<{id:string}>}) {
+  const [data,setData]=useState<any>(null);const [error,setError]=useState("");
+  useEffect(()=>{params.then(async ({id})=>{
+    const password=sessionStorage.getItem("adminPassword")??"";
+    const response=await fetch("/api/admin/participants/"+id,{headers:{"x-admin-password":password}});
+    const result=await response.json();
+    if(!response.ok)setError(result.error);else setData(result);
+  });},[params]);
+  return <main className="shell"><section className="panel"><a href="/admin">← 관리자 현황</a>
+    <h1 className="title">참가자 #{data?.person.enrollment_number??"…"}</h1>{error&&<p role="alert">{error}</p>}
+    {data&&<><p>역할 순서: {data.person.role_order.join(" → ")} · 조건 순서: {data.person.condition_order.join(" → ")}</p>
+      {data.trials.map((trial:any)=><article className="card" key={trial.id} style={{marginTop:12}}>
+        <h2>{trial.role} · {trial.condition} · {trial.phase}</h2>
+        <p>후보 {trial.candidate_snapshots.length}개 · 최종 {trial.final_product_id??"미정"} · 설문 {trial.survey_completed_at?"완료":"미완료"}</p>
+        <p>후보 {trial.candidates_effective_ms??"—"}ms · 최종 {trial.decision_effective_ms??"—"}ms · 운영자 확인 {trial.operator_review_needed?"필요":"없음"}</p>
+      </article>)}
+      <h2>이벤트 로그</h2><ol>{data.events.map((event:any)=><li key={event.id}>
+        {event.server_at} · {event.role}/{event.condition} · {event.actor}/{event.origin} · {event.event_type}
+      </li>)}</ol></>}
+  </section></main>;
 }
