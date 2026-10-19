@@ -76,74 +76,76 @@ button, input { font: inherit; }
 .study-admin-products .card { min-width:0; overflow-wrap:anywhere; }
 .study-admin-products img { display:block; width:100%; height:160px; object-fit:contain; margin:12px 0; background:#f1f5f9; }
 .study-admin-products .card p { max-height:5.6em; overflow:auto; line-height:1.4; }
-/* Current study: a single vertical chat, with its controls pinned to the phone frame. */
-.study-experience{min-height:100svh;display:grid;grid-template-columns:minmax(270px,390px) minmax(0,700px);align-items:center;justify-content:center;gap:clamp(20px,5vw,80px);padding:20px 26px;background:#f2f5fa;color:#1b304e}
+/* The study keeps one chronological chat and uses the available desktop width. */
+.study-experience{width:min(100%,1800px);min-height:100svh;display:grid;grid-template-columns:minmax(260px,300px) minmax(0,1fr);align-items:stretch;gap:24px;margin:0 auto;padding:24px;background:#f2f5fa;color:#1b304e;font-size:16px}
 .study-side{padding:30px;border:1px solid #d9e4f3;border-radius:26px;background:#fff;box-shadow:0 18px 48px #1c365015}
-.study-side h1{font-size:25px;margin:0 0 8px}.study-side>p,.study-side section p{line-height:1.6;color:#66809d}
-.study-side section{padding:20px 0;border-top:1px solid #e6edf6}.study-side h2{font-size:16px;margin:0 0 8px}
+.study-side{align-self:start}.study-side h1{font-size:28px;margin:0 0 8px}.study-side>p,.study-side section p{line-height:1.65;color:#4c6682;font-size:15px}
+.study-side section{padding:20px 0;border-top:1px solid #e6edf6}.study-side h2{font-size:18px;margin:0 0 8px}
 .study-side section strong{line-height:1.5}.study-side a{color:#2071dd}
-.study-chat-phone{height:min(960px,calc(100svh - 24px));min-height:610px;border:11px solid var(--study-frame,#111);border-radius:47px;background:var(--study-frame,#111);box-shadow:0 28px 75px #1c365028;overflow:hidden;transition:border-color .25s,background-color .25s}
+.study-chat-phone{min-width:0;height:calc(100svh - 48px);min-height:620px;border:4px solid var(--study-frame,#111);border-radius:20px;background:var(--study-frame,#111);box-shadow:0 14px 42px #1c36501c;overflow:hidden;transition:border-color .25s,background-color .25s}
 .study-condition-A{--study-frame:#111111;--study-condition-ink:#fff}
 .study-condition-B{--study-frame:#2468e8;--study-condition-ink:#fff}
 .study-condition-C{--study-frame:#d3343f;--study-condition-ink:#fff}
 .study-condition-D{--study-frame:#aeb9c6;--study-condition-ink:#172a43}
-.study-chat-screen{height:100%;border-radius:35px;overflow:hidden;display:flex;flex-direction:column;background:#edf4fc}
+.study-chat-screen{height:100%;border-radius:15px;overflow:hidden;display:flex;flex-direction:column;background:#edf4fc}
 .study-chat-header{flex:none;background:#fff;border-bottom:1px solid #d9e4f2}
-.study-chat-status{display:flex;justify-content:space-between;padding:12px 23px 4px;font-weight:800;font-size:14px}
-.study-chat-heading{display:flex;align-items:center;gap:12px;padding:10px 20px 13px}.study-chat-heading>span:first-child{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#e8f1ff;font-size:24px}
-.study-chat-heading strong,.study-chat-heading small{display:block}.study-chat-heading strong{font-size:19px}.study-chat-heading small{margin-top:3px;color:#6a83a1}
-.study-condition-tag{margin-left:auto;padding:8px 10px;border-radius:10px;background:var(--study-frame,#111);color:var(--study-condition-ink,#fff);font-size:12px;font-weight:800;white-space:nowrap}
-.study-clock{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:0 20px 12px;font-size:13px;color:#3d648f}.study-clock strong{color:#1667d3}.study-clock>div{height:7px;grid-column:1/-1;border-radius:20px;background:#e5edf8;overflow:hidden}.study-clock i{display:block;height:100%;background:#3985ee}
-.study-chat-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 18px 26px}
-.study-chat-divider{text-align:center;margin:16px auto;padding:8px 13px;width:fit-content;max-width:95%;border-radius:30px;background:#dce9f8;color:#42698f;font-weight:700;font-size:12px}.study-chat-divider.is-phase{background:#fff;color:#2069bf}
+.study-chat-status{display:none}
+.study-chat-heading{display:flex;align-items:center;gap:14px;padding:17px 24px}.study-chat-heading>span:first-child{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#e8f1ff;font-size:27px}
+.study-chat-heading strong,.study-chat-heading small{display:block}.study-chat-heading strong{font-size:23px}.study-chat-heading small{margin-top:3px;color:#506b89;font-size:15px}
+.study-condition-tag{margin-left:auto;padding:10px 13px;border-radius:10px;background:var(--study-frame,#111);color:var(--study-condition-ink,#fff);font-size:15px;font-weight:800;white-space:nowrap}
+.study-clock{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:0 24px 16px;font-size:15px;color:#315d89}.study-clock strong{color:#1667d3}.study-clock>div{height:8px;grid-column:1/-1;border-radius:20px;background:#e5edf8;overflow:hidden}.study-clock i{display:block;height:100%;background:#3985ee}
+.study-chat-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:24px 26px 30px}
+.study-chat-divider{text-align:center;margin:16px auto;padding:9px 15px;width:fit-content;max-width:95%;border-radius:30px;background:#dce9f8;color:#315d89;font-weight:700;font-size:14px}.study-chat-divider.is-phase{background:#fff;color:#2069bf}
 .study-chat-notice{text-align:center;color:#6b8099}
-.study-bubble{width:fit-content;max-width:94%;padding:13px 15px;margin:12px 0;border:1px solid #d8e5f5;border-radius:17px;background:#fff;box-shadow:0 4px 15px #2f52780b}
-.study-bubble.from-giver{margin-left:auto;background:#dfeeff;border-color:#bed8fb}.study-bubble b{color:#2571cf;font-size:12px}.study-bubble p{margin:8px 0 0;line-height:1.55;white-space:pre-wrap}
-.study-chat-control{padding:17px;margin:13px 0;border:1px solid #d6e4f6;border-radius:18px;background:#fff;line-height:1.5}
-.study-chat-control h3{font-size:16px;margin:0 0 8px}.study-chat-control p{color:#4b6683;margin:7px 0 12px}
-.study-basket-status{padding:10px 12px;margin:10px 0;border:1px solid #b7d4f6;border-radius:12px;background:#eef6ff;color:#1d5da5;font-size:13px}
+.study-bubble{width:fit-content;max-width:min(82%,820px);padding:16px 19px;margin:14px 0;border:1px solid #d8e5f5;border-radius:17px;background:#fff;box-shadow:0 4px 15px #2f52780b}
+.study-bubble.is-product-message{width:100%;max-width:none}.study-bubble.from-giver{margin-left:auto;background:#dfeeff;border-color:#bed8fb}.study-bubble b{color:#1762ba;font-size:14px}.study-bubble p{margin:8px 0 0;line-height:1.6;white-space:pre-wrap}
+.study-chat-control{padding:20px;margin:15px 0;border:1px solid #d6e4f6;border-radius:18px;background:#fff;line-height:1.55}
+.study-chat-control h3{font-size:19px;margin:0 0 8px}.study-chat-control p{color:#3d5b7b;margin:8px 0 14px}
+.study-basket-status{padding:12px 14px;margin:12px 0;border:1px solid #b7d4f6;border-radius:12px;background:#eef6ff;color:#1d5da5;font-size:15px}
 .study-basket-status ol{margin:5px 0 0;padding-left:20px}.study-basket-status li{margin:2px 0}
 .study-basket-confirmation{padding:8px 10px;border-radius:9px;background:#e9f8ed;color:#176534;font-weight:700}
-.study-chat-control form{display:grid;gap:8px}.study-chat-control textarea{width:100%;min-height:84px;resize:vertical;border:1px solid #c7d9f0;border-radius:12px;padding:12px;background:#fff;color:#1b304e}
-.study-chat-control label{display:block;font-size:13px;font-weight:700}.study-chat-control label textarea{margin-top:8px}
-.study-chat-control button,.study-chat-footer button,.study-product-action{border:0;border-radius:10px;background:#317ded;color:white;padding:11px 13px;font-weight:700;cursor:pointer}
+.study-chat-control form{display:grid;gap:10px}.study-chat-control textarea{width:100%;min-height:92px;resize:vertical;border:1px solid #c7d9f0;border-radius:12px;padding:14px;background:#fff;color:#1b304e;font-size:16px;line-height:1.5}
+.study-chat-control label{display:block;font-size:15px;font-weight:700}.study-chat-control label textarea{margin-top:8px}
+.study-chat-control button,.study-chat-footer button,.study-product-action{border:0;border-radius:10px;background:#317ded;color:white;padding:12px 16px;font-size:16px;font-weight:700;cursor:pointer}
 .study-chat-control button:disabled,.study-chat-footer button:disabled,.study-product-action:disabled{opacity:.45;cursor:not-allowed}
-.study-product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:11px}
+.study-product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px}
 .study-product{min-width:0;display:flex;flex-direction:column;border:1px solid #cddff3;border-radius:12px;overflow:hidden;background:#fff}
 .study-product.is-selected{border-color:#1764d2;box-shadow:0 0 0 2px #1764d2 inset}
-.study-product-main{display:flex;flex:1;flex-direction:column;align-items:stretch;text-align:left;gap:5px;width:100%;height:auto;border:0;background:transparent;padding:8px;color:#1d3656;cursor:pointer}
-.study-chat-control .study-product-main{border:0;border-radius:0;background:transparent;color:#1d3656;padding:8px;font-weight:400}
-.study-product-image{height:110px;display:grid;place-items:center;background:#f3f6fa;border-radius:8px;overflow:hidden}.study-product-image img{max-width:100%;max-height:100%;object-fit:contain}
-.study-product-name{font-size:12px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}.study-product strong{font-size:13px;color:#1564ca}.study-product small{font-size:11px;color:#647e9b}.study-product-info,.study-product-example-review,.study-product-reason{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere}.study-product-info{font-size:11px;line-height:1.4}.study-product-reason{font-size:11px;line-height:1.4}.study-product-link{margin-top:auto;color:#1564ca;font-size:11px;font-weight:700}
-.study-product-action{display:block;width:calc(100% - 12px);margin:6px;font-size:11px}
+.study-product-main{display:flex;flex:1;flex-direction:column;align-items:stretch;text-align:left;gap:7px;width:100%;height:auto;border:0;background:transparent;padding:14px;color:#1d3656;cursor:pointer}
+.study-chat-control .study-product-main{border:0;border-radius:0;background:transparent;color:#1d3656;padding:14px;font-weight:400}
+.study-product-image{height:156px;display:grid;place-items:center;background:#f3f6fa;border-radius:8px;overflow:hidden}.study-product-image img{max-width:100%;max-height:100%;object-fit:contain}
+.study-product-name{font-size:17px;font-weight:800;line-height:1.4;overflow-wrap:break-word;word-break:keep-all}.study-product strong{font-size:18px;color:#1564ca}.study-product small{font-size:13px;color:#526c89}.study-product-info,.study-product-reason{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:keep-all;font-size:14px;line-height:1.5}.study-product-info{-webkit-line-clamp:2}.study-product-reason{-webkit-line-clamp:1;color:#375b7d}.study-product-link{margin-top:auto;color:#1564ca;font-size:14px;font-weight:700}
+.study-product-action{display:block;width:calc(100% - 20px);margin:10px;font-size:15px}
 .study-product.is-selected .study-product-action{background:#1757b4}
 .study-selection-status{font-weight:700;color:#1757b4!important}
-.study-selection-hint{font-size:12px;color:#415f82!important}
+.study-selection-hint{font-size:15px;color:#415f82!important}
 .study-final-choice-list{display:grid;gap:7px;margin:10px 0 14px;padding:0;border:0}
-.study-final-choice-list legend{margin-bottom:7px;font-size:13px;font-weight:800;color:#1d3656}
+.study-final-choice-list legend{margin-bottom:7px;font-size:16px;font-weight:800;color:#1d3656}
 .study-chat-control .study-final-choice-list label{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid #c7d9f0;border-radius:10px;background:#fff;cursor:pointer}
 .study-chat-control .study-final-choice-list label.is-selected{border-color:#1764d2;background:#eef5ff}
 .study-final-choice-list input{flex:none;accent-color:#1764d2}
 .study-final-choice-list span{min-width:0;flex:1;overflow-wrap:anywhere}.study-final-choice-list strong{white-space:nowrap;color:#1757b4}
 .study-final-card{border-color:#86b3ed;background:#f7fbff}.study-final-card strong{color:#1564ca}
-.study-chat-footer{flex:none;max-height:35%;overflow-y:auto;border-top:1px solid #d6e2f1;background:#fff;padding:13px 16px}
-.study-footer-task{display:flex;align-items:center;gap:10px;justify-content:space-between;font-size:13px}.study-footer-task span{line-height:1.4}.study-footer-task label{flex:1}
+.study-chat-footer{flex:none;max-height:35%;overflow-y:auto;border-top:1px solid #d6e2f1;background:#fff;padding:16px 24px}
+.study-footer-task{display:flex;align-items:center;gap:14px;justify-content:space-between;font-size:15px}.study-footer-task span{line-height:1.5}.study-footer-task label{flex:1}
 .study-footer-task input{width:100%;margin-top:5px;padding:10px;border:1px solid #c9d9ed;border-radius:10px}
-.study-footer-task button{flex:none}.study-chat-error{color:#a62128;margin:0 0 10px;font-size:13px}
-.study-withdraw{display:block;margin:10px 0 0 auto!important;padding:5px!important;background:transparent!important;color:#637d99!important;font-size:11px;font-weight:400!important}
+.study-footer-task button{flex:none}.study-chat-error{color:#a62128;margin:0 0 10px;font-size:15px}
+.study-withdraw{display:block;margin:10px 0 0 auto!important;padding:5px!important;background:transparent!important;color:#637d99!important;font-size:13px;font-weight:400!important}
 .study-detail-overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:18px;background:#142538a8}
 .study-detail{position:relative;width:min(100%,600px);max-height:90svh;overflow:auto;padding:24px;background:#fff;border-radius:22px}
 .study-detail>img{display:block;max-width:100%;max-height:230px;margin:0 auto;object-fit:contain}
 .study-detail h2{font-size:22px}.study-detail p{line-height:1.65;white-space:pre-wrap}.study-detail small{display:block;margin-top:15px;color:#647e9b}
+.study-original-details{margin-top:18px;padding:12px 15px;border:1px solid #d7e4f3;border-radius:10px;color:#395b7d}.study-original-details summary{cursor:pointer;font-weight:700}.study-original-details p{font-size:14px;overflow-wrap:break-word}
 .study-detail-close{float:right;border:0;border-radius:9px;background:#e9f1fb;padding:9px 13px;cursor:pointer}
 .study-confirm-overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:18px;background:#142538ad}
 .study-confirm-dialog{width:min(100%,430px);padding:23px;border-radius:20px;background:#fff;box-shadow:0 22px 60px #10274444}
 .study-confirm-dialog h2{font-size:21px;margin:0 0 12px}.study-confirm-dialog p{line-height:1.55;color:#4b6683}.study-confirm-dialog p strong{color:#1b304e}
 .study-confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.study-confirm-actions button{border:0;border-radius:10px;padding:11px 14px;background:#317ded;color:#fff;font-weight:700;cursor:pointer}.study-confirm-actions .study-confirm-cancel{background:#e9f1fb;color:#315574}.study-confirm-actions button:disabled{opacity:.5;cursor:not-allowed}
-@media(max-width:900px){.study-experience{display:block;padding:0}.study-side{display:none}.study-chat-phone{width:100%;height:100svh;min-height:0;border-width:6px;border-radius:0;box-shadow:none}.study-chat-screen{border-radius:0}}
-@media(max-width:520px){.study-chat-scroll{padding:16px 10px}.study-bubble{max-width:97%}.study-product-grid{gap:5px}.study-product-image{height:77px}.study-product-main{padding:5px}.study-product-name{font-size:11px}.study-product-reason{display:none}.study-chat-control{padding:12px}.study-footer-task{flex-wrap:wrap}.study-footer-task button{width:100%}}
+@media(max-width:900px){.study-experience{display:block;padding:0}.study-side{display:none}.study-chat-phone{width:100%;height:100svh;min-height:0;border-width:5px;border-radius:0;box-shadow:none}.study-chat-screen{border-radius:0}.study-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.study-chat-scroll{padding:16px 12px}.study-bubble{max-width:97%}.study-product-grid{grid-template-columns:1fr;gap:10px}.study-product-image{height:150px}.study-product-main,.study-chat-control .study-product-main{padding:12px}.study-chat-control{padding:14px}.study-footer-task{flex-wrap:wrap}.study-footer-task button{width:100%}.study-chat-heading{padding:13px 15px}.study-clock{padding:0 15px 12px}}
 .study-comparison-scroll{max-width:100%;overflow-x:auto}
-.study-comparison{width:100%;min-width:440px;border-collapse:collapse;table-layout:fixed;font-size:11px;line-height:1.4}
-.study-comparison th,.study-comparison td{border:1px solid #d7e4f3;padding:8px;overflow-wrap:anywhere;vertical-align:top;text-align:left}
-.study-comparison th:first-child{width:88px;background:#edf4fc}
-.study-comparison thead th{background:#edf4fc;color:#245f9e}
+.study-comparison{width:100%;min-width:740px;border-collapse:collapse;table-layout:fixed;font-size:15px;line-height:1.5}
+.study-comparison th,.study-comparison td{border:1px solid #d7e4f3;padding:12px;overflow-wrap:break-word;word-break:keep-all;vertical-align:top;text-align:left}
+.study-comparison th:first-child{width:132px;background:#edf4fc;white-space:nowrap}
+.study-comparison thead th{background:#edf4fc;color:#245f9e}.study-comparison thead th span{display:block;margin-top:4px;color:#1b304e}
+.study-comparison-summary{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}

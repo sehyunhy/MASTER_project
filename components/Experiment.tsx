@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MAXIMUM_PHASE_MS, MINIMUM_PHASE_MS } from "@/lib/study/config";
 import { beaconStudyTelemetry, captureStudyEvent, flushStudyTelemetry, studyTabId } from "@/lib/study/telemetry-client";
+import { productCategoryKo, productExampleReviewKo, productInfoKo, productReasonKo, productSpecKo } from "@/lib/study/product-display";
 import { useStudyExposure } from "./useStudyExposure";
 
 type Role = "giver" | "recipient";
@@ -27,6 +28,11 @@ const conditionLabel: Record<string,string> = {
   C: "한 개씩 후보 만들기 · Agent 확정", D: "Agent가 후보 3개 구성·확정",
 };
 const id = () => crypto.randomUUID();
+
+function agentReasonForDisplay(trial: Trial, productId: string | null | undefined, raw: string | null | undefined) {
+  const product = trial.candidate_snapshots.find(candidate => candidate.source_product_id === productId);
+  return product ? productReasonKo({ ...product, reason: raw ?? "" }) : raw ?? "";
+}
 
 function ObservedMessage({message,className,paused,onExposure,children}: {
   message:Message;className:string;paused:boolean;
@@ -66,11 +72,10 @@ function ProductCard({ product, onOpen, onExposure, surface, paused, onImageErro
       <span className="study-product-image">{product.image_url ? <img src={product.image_url} alt="" loading="lazy" onError={onImageError} /> : "🎁"}</span>
       <span className="study-product-name">{product.name_ko}</span>
       <strong>{Number(product.price_krw).toLocaleString()}원</strong>
-      <small>{product.category}</small>
+      <small>{productCategoryKo(product)}</small>
       {simulated && <small>연구용 가상 상품 · 이미지는 예시</small>}
-      {simulated && <span className="study-product-info">{product.description_original.split("연구용 예시 후기")[0].replace("연구용 가상 상품입니다. 상품 정보:","").trim()}</span>}
-      {simulated && <small className="study-product-example-review">예시 후기: {product.description_original.split("연구용 예시 후기(실제 구매 후기 아님):")[1]?.trim() ?? "내용 없음"} (실제 구매 후기 아님)</small>}
-      {product.reason && <span className="study-product-reason">{product.reason}</span>}
+      <span className="study-product-info">{productInfoKo(product)}</span>
+      {product.reason && <span className="study-product-reason">{productReasonKo(product)}</span>}
       <span className="study-product-link">상품 상세 보기</span>
     </button>
     {action && <button type="button" className="study-product-action" aria-pressed={Boolean(action.selected)} disabled={disabled} onClick={action.run}>{action.label}</button>}
@@ -523,7 +528,7 @@ export function Experiment({ role }: { role: Role }) {
             <div className="study-chat-divider">조건 {item.condition} 시작 · {conditionLabel[item.condition]}</div>
             <div className="study-chat-divider is-phase">1단계 · 후보 만들기</div>
             {shownMessages.filter(message=>message.trial_id===item.id && message.phase==="candidates").map(message=>
-              <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
+              <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.kind==="candidate_batch"?"is-product-message":""} ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
                 <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b>
                 <p>{message.content}</p>
                 {message.kind==="candidate_confirmed" && message.payload?.product &&
@@ -567,15 +572,19 @@ export function Experiment({ role }: { role: Role }) {
             {item.candidate_snapshots.length===3 && (["decision","survey","complete"].includes(item.phase) || ["timeout","skipped"].includes(item.phase) && item.timeout_phase==="decision") && <div className="study-chat-control">
               <h3>세 후보 비교</h3><ObservedComparison paused={Boolean(detail)}
                 onExposure={comparisonExposure(item)} onScrollDepth={comparisonScroll(item)}><table className="study-comparison">
-                <thead><tr><th>확인 항목</th>{item.candidate_snapshots.map(product=><th key={product.source_product_id}>{product.name_ko}</th>)}</tr></thead>
-                <tbody><tr><th>연구용 가격</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{Number(product.price_krw).toLocaleString()}원</td>)}</tr>
-                  <tr><th>상품 종류</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{product.category}</td>)}</tr>
-                  <tr><th>원본명</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{product.name_original}</td>)}</tr></tbody>
+                <thead><tr><th>비교 항목</th>{item.candidate_snapshots.map((product,index)=><th key={product.source_product_id}>후보 {String.fromCharCode(65+index)}<span>{product.name_ko}</span></th>)}</tr></thead>
+                <tbody><tr><th>가격</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{Number(product.price_krw).toLocaleString()}원</td>)}</tr>
+                  <tr><th>상품 종류</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{productCategoryKo(product)}</td>)}</tr>
+                  <tr><th>구성·크기</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{productSpecKo(product)}</td>)}</tr>
+                  <tr><th>핵심 정보</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}><span className="study-comparison-summary">{productInfoKo(product)}</span></td>)}</tr>
+                  <tr><th>검토 근거</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}><span className="study-comparison-summary">{productReasonKo(product)}</span></td>)}</tr></tbody>
               </table></ObservedComparison><p>확인된 상품 기록만 표시합니다. 상세 설명은 상품 카드를 눌러 확인할 수 있습니다.</p>
             </div>}
             {shownMessages.filter(message=>message.trial_id===item.id && message.phase==="decision").map(message=>
-              <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
-                <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b><p>{message.content}</p>
+              <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.kind==="final_selection" && message.speaker==="agent"?"is-agent-final":""} ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
+                <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b><p>{message.kind==="final_selection" && message.speaker==="agent"
+                  ? agentReasonForDisplay(item,message.payload?.source_product_id,message.content)
+                  : message.content}</p>
               </ObservedMessage>)}
             {item.id===trial?.id && item.phase==="decision" && role==="giver" && item.decision_actor==="human" && !item.final_product_id &&
               <div className="study-chat-control"><h3>세 후보 중 하나를 선택해 주세요</h3>
@@ -612,7 +621,9 @@ export function Experiment({ role }: { role: Role }) {
               </div>}
             {item.id===trial?.id && item.phase==="decision" && role==="giver" && item.decision_actor==="agent" && !item.final_product_id &&
               <div className="study-chat-control"><p>Agent가 현재 세 후보 중 하나를 추천·확정합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"final"});void agentTask("final");}}>Agent 결과 다시 시도</button></div>}
-            {item.final_product_id && <div className="study-chat-control study-final-card"><h3>{item.final_actor==="agent"?"Agent가 선택한 최종 선물":"선물 주는 사람이 선택한 최종 선물"}</h3><strong>{item.candidate_snapshots.find(p=>p.source_product_id===item.final_product_id)?.name_ko}</strong><p>{item.final_reason}</p></div>}
+            {item.final_product_id && <div className="study-chat-control study-final-card"><h3>{item.final_actor==="agent"?"Agent가 선택한 최종 선물":"선물 주는 사람이 선택한 최종 선물"}</h3><strong>{item.candidate_snapshots.find(p=>p.source_product_id===item.final_product_id)?.name_ko}</strong><p>{item.final_actor==="agent"
+              ? agentReasonForDisplay(item,item.final_product_id,item.final_reason)
+              : item.final_reason}</p></div>}
             {item.phase==="complete" && <div className="study-chat-divider">조건 {item.condition} 완료</div>}
             {item.phase==="skipped" && <div className="study-chat-divider">조건 {item.condition} · 시간초과로 미완료</div>}
           </div>)}
@@ -658,7 +669,10 @@ export function Experiment({ role }: { role: Role }) {
         <button type="button" className="study-detail-close" onClick={closeProduct}>닫기 ×</button>
         {detail.image_url && <img src={detail.image_url} alt="" />}
         <h2>{detail.name_ko}</h2><strong>{Number(detail.price_krw).toLocaleString()}원</strong>
-        <p>{detail.name_original}</p><p>{detail.description_original}</p>
+        <h3>상품 정보</h3><p>{productInfoKo(detail)}</p>
+        {detail.reason && <><h3>추천 이유</h3><p>{productReasonKo(detail)}</p></>}
+        {productExampleReviewKo(detail) && <><h3>연구용 예시 후기</h3><p>{productExampleReviewKo(detail)} (실제 구매 후기 아님)</p></>}
+        {!detail.source_product_id.startsWith("study-") && <details className="study-original-details"><summary>원문 상품 정보 보기</summary><p>{detail.name_original}</p><p>{detail.description_original}</p></details>}
         {detail.source_url && <a href={detail.source_url} target="_blank" rel="noreferrer"
           onClick={()=>void event("external_product_link_opened",{surface:"product_detail"},
             detail.source_product_id,detailOwner.current??undefined)}>원본 상품 정보</a>}

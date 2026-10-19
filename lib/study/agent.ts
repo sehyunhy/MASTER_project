@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { anthropicModel, shortResponseOptions } from "@/lib/agent/model";
+import { productInfoKo } from "@/lib/study/product-display";
 
 export type StudyProduct = {
   source_product_id: string; name_ko: string; name_original: string;
@@ -58,7 +59,7 @@ const generatedSchema = z.object({ name_ko:z.string().trim().min(3).max(90),
 export async function createStudyProduct(input: { profile: StudyProfile; condition: string;
   request: string; existing: StudyProduct[] }) {
   const result=await structured("create_study_product",generatedSchema,{
-    instructions: "Create exactly ONE plausible, clearly fictional gift product for a Korean research simulation. Follow the participant's requested product direction even when it differs from the recipient profile. Do not claim that a seller, review, price, stock, or product page was checked. The example_review is fictional sample text, not a real customer's review. Provide a simple product name, concrete basic information, a plausible KRW study price within the budget, and a reason tied to the participant request. Avoid any product names already confirmed in this trial. Return the structured fields only.",
+    instructions: "Create exactly ONE plausible, clearly fictional gift product for a Korean research simulation. Write the name, category, info, example_review, and reason in natural Korean. Keep info to one or two short factual sentences (about 120 Korean characters or fewer), and reason and example_review to one short sentence each. Follow the participant's requested product direction even when it differs from the recipient profile. Do not claim that a seller, review, price, stock, or product page was checked. The example_review is fictional sample text, not a real customer's review. Provide a simple product name, concrete basic information, a plausible KRW study price within the budget, and a reason tied to the participant request. Avoid any product names already confirmed in this trial. Return the structured fields only.",
     context:{condition:input.condition,recipient:input.profile,budget_krw:input.profile.gift_budget,
       already_confirmed:input.existing.map(item=>item.name_ko)},
     fields:{participant_request:input.request},
@@ -81,8 +82,8 @@ export function verifiedEvidence(product: StudyProduct, quote: string) {
 }
 
 export function groundedReason(profile: StudyProfile, product: StudyProduct, quote: string) {
-  const evidence = verifiedEvidence(product,quote);
-  return `${profile.name}님의 종이 프로필과 대조해 검토했습니다. 상품 기록에서 확인한 근거는 “${evidence}”입니다. 종류는 ${product.category}, 연구용 가격은 ${product.price_krw.toLocaleString()}원입니다.`;
+  verifiedEvidence(product,quote);
+  return `${profile.name}님의 종이 프로필을 참고해 고른 후보입니다. ${productInfoKo(product)}`;
 }
 
 export function isBroadDelegation(text: string) {
