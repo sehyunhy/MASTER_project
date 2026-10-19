@@ -6,10 +6,10 @@ import { MINIMUM_PHASE_MS } from "@/lib/study/config";
 const schema = z.object({
   role: z.enum(["giver", "recipient"]), trialId: z.uuid(), type: z.enum([
     "activate", "ping", "candidatesVisible", "advance", "confirmCandidate", "finalizeHuman", "revealScriptedFinal",
-    "survey", "skipTimeout", "event", "scriptedShown", "withdraw",
+    "survey", "skipTimeout", "saveDraft", "event", "scriptedShown", "withdraw",
   ]),
   key: z.uuid().optional(), code: z.string().optional(), tabId: z.string().max(80).optional(),
-  sequence: z.number().int().optional(), active: z.boolean().optional(),
+  sequence: z.number().int().nonnegative().optional(), active: z.boolean().optional(),
   requestKey: z.uuid().optional(), productId: z.string().optional(), reason: z.string().optional(),
   messageId: z.number().int().positive().optional(),
   eventType: z.string().max(70).optional(), target: z.string().max(120).optional(),
@@ -31,9 +31,12 @@ export async function POST(request: Request) {
   const body = parsed.data;
   if (JSON.stringify(body.payload??{}).length>5000)
     return NextResponse.json({error:"행동 자료가 너무 깁니다."},{status:400});
+  let failureContext: { db: ReturnType<typeof import("@/lib/supabase/server").supabaseAdmin>;
+    personId: string; trial: any } | null = null;
   try {
     const { db, person } = await studySession(body.role);
     const { trial } = await trialFor(db, person.id, body.role, body.trialId);
+    failureContext={db,personId:person.id,trial};
     let result: any;
     if (body.type === "activate") {
       if (!body.key) throw new Error("REQUEST_KEY_REQUIRED");
@@ -79,6 +82,16 @@ export async function POST(request: Request) {
         throw new Error("FINAL_ACTION_NOT_ALLOWED");
       const response = await db.rpc("study_finalize", { p_trial_id: trial.id, p_person_id: person.id,
         p_product_id: body.productId, p_actor: "human", p_reason: body.reason ?? "", p_event_key: body.key });
+      if (response.error) throw response.error;
+      result = response.data;
+    } else if (body.type === "saveDraft") {
+      if (body.role !== "giver" || trial.decision_actor !== "human" || trial.phase !== "decision" ||
+        !body.key || body.sequence === undefined) throw new Error("DRAFT_NOT_ALLOWED");
+      const response = await db.rpc("study_save_decision_draft", {
+        p_trial_id: trial.id, p_person_id: person.id,
+        p_product_id: body.productId ?? null, p_reason: body.reason ?? "",
+        p_client_sequence: body.sequence, p_event_key: body.key,
+      });
       if (response.error) throw response.error;
       result = response.data;
     } else if (body.type === "revealScriptedFinal") {
@@ -143,6 +156,12 @@ export async function POST(request: Request) {
   } catch (cause) {
     console.error("Study action failed", { type: body.type, cause });
     const message = cause instanceof Error ? cause.message : "REQUEST_FAILED";
+    if (failureContext && !["ping","event"].includes(body.type)) {
+      await logStudyEvent(failureContext.db,{personId:failureContext.personId,
+        trial:failureContext.trial,actor:"system",origin:"system",type:"action_rejected",payload:{
+          action:body.type,reason_code:message,product_id:body.productId??null,
+        }}).catch(error=>console.error("Study rejection telemetry failed",error));
+    }
     const known: Record<string,string> = {
       MINIMUM_EXPOSURE_REQUIRED: `이 단계의 유효 확인시간 ${MINIMUM_PHASE_MS/1000}초가 지나야 합니다.`,
       THREE_CANDIDATES_REQUIRED: "후보 세 개를 먼저 확정해 주세요.",

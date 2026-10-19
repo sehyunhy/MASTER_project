@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-const exports=["study_people","study_trials","study_messages","study_events","study_metrics","study_products","study_stimuli"];
+const exports=["study_people","study_trials","study_messages","study_events","study_metrics","study_products","study_stimuli","study_survey_responses"];
 type PreparedProduct={source_product_id:string;name_ko:string;name_original:string;price_krw:number;image_url:string;source_url:string|null;description_original:string};
 type StimulusPreview={version:string;count:number;approved:boolean;candidates:PreparedProduct[];finalProductId:string|null};
 export default function AdminPage() {
@@ -9,6 +9,31 @@ export default function AdminPage() {
   const [stimulus,setStimulus]=useState<StimulusPreview|null>(null);
   const [stimulusBusy,setStimulusBusy]=useState(false);
   const [error,setError]=useState("");
+  const [surveyNumber,setSurveyNumber]=useState("");
+  const [surveyRole,setSurveyRole]=useState<"giver"|"recipient">("giver");
+  const [surveyCondition,setSurveyCondition]=useState<"A"|"B"|"C"|"D">("A");
+  const [surveySection,setSurveySection]=useState("posttrial");
+  const [surveyVersion,setSurveyVersion]=useState("study2-study3-pilot-final");
+  const [surveyPaperId,setSurveyPaperId]=useState("");
+  const [surveyEnteredBy,setSurveyEnteredBy]=useState("");
+  const [surveyAnswers,setSurveyAnswers]=useState("{}");
+  const [surveySaved,setSurveySaved]=useState("");
+  async function saveSurvey() {
+    setSurveySaved("");setError("");
+    try {
+      const answers=JSON.parse(surveyAnswers);
+      if(!answers||Array.isArray(answers)||typeof answers!=="object"||!Object.keys(answers).length)
+        throw new Error("문항별 응답을 하나 이상 JSON 객체로 입력해 주세요.");
+      const response=await fetch("/api/admin/survey",{method:"POST",headers:{"content-type":"application/json","x-admin-password":password},
+        body:JSON.stringify({participantNumber:surveyNumber.trim().toUpperCase(),role:surveyRole,
+          condition:surveySection==="posttrial"?surveyCondition:undefined,formSection:surveySection,
+          formVersion:surveyVersion,paperFormId:surveyPaperId||undefined,
+          enteredBy:surveyEnteredBy,answers})});
+      const result=await response.json();
+      if(!response.ok) throw new Error(result.error??"설문 입력에 실패했습니다.");
+      setSurveySaved(`저장됨 · ${surveyNumber.toUpperCase()} · ${surveyRole} · ${surveySection}${surveySection==="posttrial"?` · ${surveyCondition}`:""}`);
+    } catch(cause) {setError(cause instanceof Error?cause.message:"설문 입력에 실패했습니다.");}
+  }
   async function load() {
     const headers={"x-admin-password":password};
     const [response,stimulusResponse]=await Promise.all([
@@ -65,6 +90,17 @@ export default function AdminPage() {
         </a>)}</div>
       <h2>원시 데이터·계산 지표</h2><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {exports.map(name=><button className="button secondary" key={name} onClick={()=>download(name)}>{name}.csv</button>)}
-      </div></>}
+      </div><h2>종이 설문 입력</h2><p className="body">설문 원본의 문항 번호를 키로 입력합니다. 조건 직후 설문은 A=C1, B=C3, C=C2, D=C4입니다.</p>
+      <div className="grid">
+        <label>역할별 참가번호<input className="field" value={surveyNumber} onChange={e=>setSurveyNumber(e.target.value)} placeholder="K02" /></label>
+        <label>역할<select className="field" value={surveyRole} onChange={e=>setSurveyRole(e.target.value as "giver"|"recipient")}><option value="giver">선물 주는 사람</option><option value="recipient">선물 받는 사람</option></select></label>
+        <label>설문 부분<select className="field" value={surveySection} onChange={e=>setSurveySection(e.target.value)}><option value="baseline">시작 전</option><option value="pretrial">과제 시작 전</option><option value="posttrial">조건 직후</option><option value="final">네 조건 이후</option><option value="crossrole">두 역할 통합</option></select></label>
+        {surveySection==="posttrial"&&<label>조건<select className="field" value={surveyCondition} onChange={e=>setSurveyCondition(e.target.value as "A"|"B"|"C"|"D")}><option>A</option><option>B</option><option>C</option><option>D</option></select></label>}
+        <label>설문 버전<input className="field" value={surveyVersion} onChange={e=>setSurveyVersion(e.target.value)} /></label>
+        <label>종이 설문 식별번호<input className="field" value={surveyPaperId} onChange={e=>setSurveyPaperId(e.target.value)} /></label>
+        <label>입력자<input className="field" value={surveyEnteredBy} onChange={e=>setSurveyEnteredBy(e.target.value)} /></label>
+      </div>
+      <label>문항별 응답 JSON<textarea className="field" rows={7} value={surveyAnswers} onChange={e=>setSurveyAnswers(e.target.value)} placeholder={'{"part2.ownership.1": 5, "part2.control.1": 6}'} /></label>
+      <button className="button" onClick={()=>void saveSurvey()}>종이 설문 응답 저장</button>{surveySaved&&<p role="status">{surveySaved}</p>}</>}
   </section></main>;
 }

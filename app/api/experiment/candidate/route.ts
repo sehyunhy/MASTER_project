@@ -48,6 +48,9 @@ export async function POST(request: Request) {
     if (claim.data?.busy) return NextResponse.json({ error: "Agent 응답을 준비 중입니다. 잠시 기다려 주세요." }, { status: 409 });
     if (claim.data?.ready) return NextResponse.json({ ready: true });
     claimed = true;
+    await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"agent_operation_started",payload:{
+      task:body.task,operation_id:body.key,slot:trial.candidate_snapshots.length+1,
+    }}).catch(cause=>console.error("Agent telemetry failed",cause));
     if (body.task === "one") {
       const requestText = body.request!.trim();
       const { error: messageError } = await db.from("study_messages").insert({
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
       };
       const savedProduct=await db.from("study_products").upsert(selected,{onConflict:"source_product_id"});
       if (savedProduct.error) throw savedProduct.error;
-      await logStudyEvent(db,{personId,trial,type:"simulated_product_created",payload:{
+      await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"simulated_product_created",payload:{
         source_product_id:selected.source_product_id,model:result.model,response_id:result.responseId,
         latency_ms:result.latencyMs,prompt_version:STUDY_PROMPT_VERSION,
       }});
@@ -84,11 +87,14 @@ export async function POST(request: Request) {
         p_latency_ms: Math.round(performance.now()-requestBegan),p_evidence_quote:evidence });
       if (saved.error) throw saved.error;
       claimed = false;
+      await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"agent_operation_completed",payload:{
+        task:body.task,operation_id:body.key,latency_ms:Math.round(performance.now()-requestBegan),
+      }}).catch(cause=>console.error("Agent telemetry failed",cause));
       return NextResponse.json({ proposal: saved.data });
     }
     if (body.task === "batch") {
       const available=await preparedProducts(db,profile.gift_budget,trial.profile_code);
-      await logStudyEvent(db,{personId,trial,type:"prepared_product_pool",payload:{
+      await logStudyEvent(db,{personId,trial,actor:"system",origin:"system",type:"prepared_product_pool",payload:{
         source:"walmart_csv",dataset_version:PREPARED_DATASET_VERSION,
         product_ids:available.map(item=>item.source_product_id),
       }});
@@ -104,6 +110,9 @@ export async function POST(request: Request) {
         p_latency_ms: Math.round(performance.now()-requestBegan),p_evidence_quotes:evidenceQuotes });
       if (saved.error) throw saved.error;
       claimed = false;
+      await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"agent_operation_completed",payload:{
+        task:body.task,operation_id:body.key,latency_ms:Math.round(performance.now()-requestBegan),
+      }}).catch(cause=>console.error("Agent telemetry failed",cause));
       return NextResponse.json({ candidates: saved.data.candidates });
     }
     const chosen = trial.candidate_snapshots as StudyProduct[];
@@ -119,6 +128,9 @@ export async function POST(request: Request) {
       p_evidence_quote: evidence });
     if (saved.error) throw saved.error;
     claimed = false;
+    await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"agent_operation_completed",payload:{
+      task:body.task,operation_id:body.key,latency_ms:Math.round(performance.now()-requestBegan),
+    }}).catch(cause=>console.error("Agent telemetry failed",cause));
     return NextResponse.json({ final: saved.data });
   } catch (cause) {
     console.error("Study Agent task failed", { task: body.task, requestKey: body.key, cause });
@@ -128,7 +140,11 @@ export async function POST(request: Request) {
     if (db && personId) {
       try {
         const { trial } = await trialFor(db, personId, "giver", body.trialId);
-        await logStudyEvent(db, { personId, trial, type: "agent_error",
+        await logStudyEvent(db,{personId,trial,actor:"agent",origin:"agent",type:"agent_operation_failed",payload:{
+          task:body.task,operation_id:body.key,latency_ms:Math.round(performance.now()-requestBegan),
+          code:cause instanceof Error?cause.message:"UNKNOWN",
+        }});
+        await logStudyEvent(db, { personId, trial, actor:"agent",origin:"agent",type: "agent_error",
           payload: { task: body.task, code: cause instanceof Error ? cause.message : "UNKNOWN" } });
       } catch {}
     }
