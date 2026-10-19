@@ -26,21 +26,21 @@ const conditionLabel: Record<string,string> = {
 const id = () => crypto.randomUUID();
 
 function ProductCard({ product, onOpen, action, disabled }: { product: Product; onOpen: (product: Product) => void;
-  action?: { label: string; run: () => void }; disabled?: boolean }) {
+  action?: { label: string; run: () => void; selected?: boolean }; disabled?: boolean }) {
   const simulated=product.source_product_id.startsWith("study-simulated:") || product.source_product_id.startsWith("study-fixed:");
-  return <article className="study-product">
+  return <article className={`study-product${action?.selected?" is-selected":""}`}>
     <button type="button" className="study-product-main" onClick={() => onOpen(product)}>
       <span className="study-product-image">{product.image_url ? <img src={product.image_url} alt="" loading="lazy" /> : "🎁"}</span>
       <span className="study-product-name">{product.name_ko}</span>
       <strong>{Number(product.price_krw).toLocaleString()}원</strong>
       <small>{product.category}</small>
       {simulated && <small>연구용 가상 상품 · 이미지는 예시</small>}
-      {simulated && <span>{product.description_original.split("연구용 예시 후기")[0].replace("연구용 가상 상품입니다. 상품 정보:","").trim()}</span>}
-      {simulated && <small>예시 후기: {product.description_original.split("연구용 예시 후기(실제 구매 후기 아님):")[1]?.trim() ?? "내용 없음"} (실제 구매 후기 아님)</small>}
+      {simulated && <span className="study-product-info">{product.description_original.split("연구용 예시 후기")[0].replace("연구용 가상 상품입니다. 상품 정보:","").trim()}</span>}
+      {simulated && <small className="study-product-example-review">예시 후기: {product.description_original.split("연구용 예시 후기(실제 구매 후기 아님):")[1]?.trim() ?? "내용 없음"} (실제 구매 후기 아님)</small>}
       {product.reason && <span className="study-product-reason">{product.reason}</span>}
       <span className="study-product-link">상품 상세 보기</span>
     </button>
-    {action && <button type="button" className="study-product-action" disabled={disabled} onClick={action.run}>{action.label}</button>}
+    {action && <button type="button" className="study-product-action" aria-pressed={Boolean(action.selected)} disabled={disabled} onClick={action.run}>{action.label}</button>}
   </article>;
 }
 
@@ -303,6 +303,11 @@ export function Experiment({ role }: { role: Role }) {
     await event("prompt_submitted",{text:draft,slot:(state?.trial.candidate_snapshots.length??0)+1});
     await agentTask("one",draft);
   };
+  const chooseFinalProduct=(product:Product) => {
+    if (chosen===product.source_product_id) return;
+    void event(chosen?"selection_changed":"selection_draft",{from:chosen||null,to:product.source_product_id});
+    setChosen(product.source_product_id);
+  };
   const finalizeHuman=async () => {
     if(reasonTimer.current){clearTimeout(reasonTimer.current);reasonTimer.current=null;}
     await event("reason_changed",{text:reason,length:reason.length});
@@ -408,13 +413,28 @@ export function Experiment({ role }: { role: Role }) {
               </div>)}
             {item.id===trial?.id && item.phase==="decision" && role==="giver" && item.decision_actor==="human" && !item.final_product_id &&
               <div className="study-chat-control"><h3>세 후보 중 하나를 선택해 주세요</h3>
+                <fieldset className="study-final-choice-list"><legend>최종 선물 하나 선택</legend>
+                  {item.candidate_snapshots.map(product=><label key={product.source_product_id} className={chosen===product.source_product_id?"is-selected":""}>
+                    <input type="radio" name={`final-product-${item.id}`} value={product.source_product_id}
+                      checked={chosen===product.source_product_id} onChange={()=>chooseFinalProduct(product)} />
+                    <span>{product.name_ko}</span><strong>{Number(product.price_krw).toLocaleString()}원</strong>
+                  </label>)}
+                </fieldset>
                 <div className="study-product-grid">{item.candidate_snapshots.map(product=><ProductCard key={product.source_product_id}
-                  product={product} onOpen={openProduct} action={{label:chosen===product.source_product_id?"선택됨":"이 상품 선택",run:()=>{
-                    void event(chosen?"selection_changed":"selection_draft",{from:chosen||null,to:product.source_product_id});
-                    setChosen(product.source_product_id);}}} />)}</div>
+                  product={product} onOpen={openProduct} action={{label:chosen===product.source_product_id?"✓ 최종 후보로 선택됨":"이 상품 선택",selected:chosen===product.source_product_id,run:()=>chooseFinalProduct(product)}} />)}</div>
+                <p className="study-selection-status" aria-live="polite">{chosen
+                  ? `선택한 상품: ${item.candidate_snapshots.find(product=>product.source_product_id===chosen)?.name_ko??""}`
+                  : "상품 카드 아래의 ‘이 상품 선택’을 눌러 주세요."}</p>
                 <label>다른 두 후보가 아닌 이 상품을 고른 이유
                   <textarea value={reason} onChange={e=>onReason(e.target.value)} placeholder="직접 이유를 작성해 주세요." /></label>
-                <button disabled={busy||!chosen||reason.trim().length<20||!/(다른|나머지|두 후보|보다|비해|대비|셋 중|세 후보|가장)/.test(reason)}
+                <p className="study-selection-hint" aria-live="polite">{!chosen
+                  ? "상품을 먼저 선택해 주세요."
+                  : reason.trim().length<20
+                    ? `선택 이유를 20자 이상 적어 주세요. 현재 ${reason.trim().length}자입니다.`
+                    : /^(그냥|알아서|모르겠|좋아)[.!?\s]*$/.test(reason.trim())
+                      ? "선택 이유를 구체적으로 적어 주세요."
+                      : "선택과 이유를 확정할 수 있습니다."}</p>
+                <button disabled={busy||!chosen||reason.trim().length<20||/^(그냥|알아서|모르겠|좋아)[.!?\s]*$/.test(reason.trim())}
                   onClick={()=>void finalizeHuman()}>최종 선택 확정</button>
               </div>}
             {item.id===trial?.id && item.phase==="decision" && role==="giver" && item.decision_actor==="agent" && !item.final_product_id &&

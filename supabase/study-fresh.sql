@@ -594,8 +594,7 @@ begin
     then raise exception 'PRODUCT_OUTSIDE_CANDIDATES'; end if;
   if t.role='giver' and p_actor='human' and
     (length(trim(coalesce(p_reason,'')))<20
-      or trim(coalesce(p_reason,'')) ~ '^(그냥|알아서|모르|좋아)'
-      or trim(coalesce(p_reason,'')) !~ '(다른|나머지|두 후보|보다|비해|대비|셋 중|세 후보|가장)')
+      or trim(coalesce(p_reason,'')) ~ '^(그냥|알아서|모르겠|좋아)[.!?[:space:]]*$')
     then raise exception 'HUMAN_REASON_REQUIRED'; end if;
   if p_actor='agent' and length(trim(coalesce(p_reason,'')))<15 then raise exception 'AGENT_REASON_REQUIRED'; end if;
   source_origin:=case when t.role='recipient' then 'scripted' when p_actor='agent' then 'agent' else 'participant' end;
