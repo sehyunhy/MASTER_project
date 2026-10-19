@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, logStudyEvent } from "@/lib/study/server";
-import { RECIPIENT_STIMULUS_VERSION } from "@/lib/study/recipient-context";
+import { MINIMUM_PHASE_MS } from "@/lib/study/config";
 
 const schema = z.object({
   role: z.enum(["giver", "recipient"]), trialId: z.uuid(), type: z.enum([
@@ -40,7 +40,8 @@ export async function POST(request: Request) {
       if (body.role === "recipient" && !trial.stimulus_id) {
         const {data:stimulus,error:stimulusError}=await db.from("study_stimuli")
           .select("id").eq("profile_code",trial.profile_code).eq("condition",trial.condition)
-          .eq("stimulus_version",RECIPIENT_STIMULUS_VERSION).not("approved_at","is",null).maybeSingle();
+          .eq("stimulus_version",trial.stimulus_version_target ?? "birthday-friend-a-web-v1")
+          .not("approved_at","is",null).maybeSingle();
         if (stimulusError) throw stimulusError;
         if (!stimulus) throw new Error("APPROVED_STIMULUS_MISSING");
       }
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
     console.error("Study action failed", { type: body.type, cause });
     const message = cause instanceof Error ? cause.message : "REQUEST_FAILED";
     const known: Record<string,string> = {
-      MINIMUM_EXPOSURE_REQUIRED: "이 단계의 유효 확인시간 60초가 지나야 합니다.",
+      MINIMUM_EXPOSURE_REQUIRED: `이 단계의 유효 확인시간 ${MINIMUM_PHASE_MS/1000}초가 지나야 합니다.`,
       THREE_CANDIDATES_REQUIRED: "후보 세 개를 먼저 확정해 주세요.",
       HUMAN_REASON_REQUIRED: "다른 두 후보가 아닌 이 선물을 고른 이유를 구체적으로 적어 주세요.",
       PREVIOUS_SURVEY_REQUIRED: "직전 조건의 종이 설문 완료를 먼저 확인해 주세요.",

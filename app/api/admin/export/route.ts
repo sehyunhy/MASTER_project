@@ -76,7 +76,7 @@ function metricRows(trials:any[],events:any[],people:any[]) {
       reconnect_count:count("connection_restored")+count("reconnected"),
       error_count:count("agent_error")+count("error"),event_count:list.length,
       survey_completed_at:trial.survey_completed_at,operator_review_needed:trial.operator_review_needed,
-      experiment_version:"7.0.0",
+      experiment_version:list[0]?.experiment_version??null,
     };
   });
 }

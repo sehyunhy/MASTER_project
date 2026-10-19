@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const db = supabaseAdmin();
     const [{ data: people, error: pe }, { data: trials, error: te }] = await Promise.all([
-      db.from("study_people").select("id,participant_number,enrollment_number,first_role,active_role,role_order,condition_order,enrollment_block,profile_code,status").order("enrollment_number"),
+      db.from("study_people").select("id,participant_number,giver_number,recipient_number,enrollment_number,first_role,active_role,role_order,condition_order,enrollment_block,profile_code,status").order("enrollment_number"),
       db.from("study_trials").select("id,person_id,role,condition,phase,operator_review_needed"),
     ]);
     if (pe || te) throw pe ?? te;

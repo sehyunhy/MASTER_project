@@ -61,7 +61,7 @@ export default function AdminPage() {
       <h2>조건 순서 배정</h2><pre>{JSON.stringify(summary.orderCounts,null,2)}</pre>
       <h2>참가자</h2><div className="grid">{summary.people.map((person:any)=>
         <a className="card" href={"/admin/participants/"+person.id} key={person.id}>
-          <b>참가번호 {person.participant_number??`#${person.enrollment_number}`}</b><p>{person.status} · {person.active_role} · {person.condition_order.join(" → ")}</p>
+          <b>{person.giver_number ? `참가자 ID ${person.recipient_number} (받는 사람) / ${person.giver_number} (주는 사람)` : `이전 참가자 ID ${person.participant_number}`}</b><p>{person.status} · {person.active_role} · {person.condition_order.join(" → ")}</p>
         </a>)}</div>
       <h2>원시 데이터·계산 지표</h2><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {exports.map(name=><button className="button secondary" key={name} onClick={()=>download(name)}>{name}.csv</button>)}

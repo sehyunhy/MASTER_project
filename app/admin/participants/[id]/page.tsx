@@ -9,7 +9,7 @@ export default function ParticipantPage({params}:{params:Promise<{id:string}>}) 
     if(!response.ok)setError(result.error);else setData(result);
   });},[params]);
   return <main className="shell"><section className="panel"><a href="/admin">← 관리자 현황</a>
-    <h1 className="title">참가번호 {data?.person.participant_number??"…"}</h1>{error&&<p role="alert">{error}</p>}
+    <h1 className="title">{data?.person.giver_number ? `참가자 ID ${data.person.recipient_number} (받는 사람) / ${data.person.giver_number} (주는 사람)` : `이전 참가자 ID ${data?.person.participant_number??"…"}`}</h1>{error&&<p role="alert">{error}</p>}
     {data&&<><p>역할 순서: {data.person.role_order.join(" → ")} · 조건 순서: {data.person.condition_order.join(" → ")}</p>
       {data.trials.map((trial:any)=><article className="card" key={trial.id} style={{marginTop:12}}>
         <h2>{trial.role} · {trial.condition} · {trial.phase}</h2>

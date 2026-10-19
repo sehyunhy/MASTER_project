@@ -43,6 +43,8 @@ end; $$;
 create table public.study_people (
   id uuid primary key default gen_random_uuid(),
   participant_number text not null unique,
+  giver_number text not null unique,
+  recipient_number text not null unique,
   enrollment_number bigint generated always as identity unique,
   browser_key uuid not null unique,
   first_role text not null check(first_role in ('giver','recipient')),
@@ -56,7 +58,11 @@ create table public.study_people (
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp(),
   constraint study_people_participant_number_format
-    check(participant_number ~ '^[A-Z0-9-]{1,12}$')
+    check(participant_number ~ '^K[0-9]{2,8}$'),
+  constraint study_people_pair_format
+    check(giver_number ~ '^K[0-9]{2,8}$' and recipient_number ~ '^K[0-9]{2,8}$'
+      and substring(giver_number from 2)::bigint=substring(recipient_number from 2)::bigint+1
+      and participant_number in (giver_number,recipient_number))
 );
 
 create table public.study_products (
@@ -100,6 +106,7 @@ create table public.study_trials (
   candidate_builder text not null check(candidate_builder in ('human','agent')),
   decision_actor text not null check(decision_actor in ('human','agent')),
   profile_code text not null,
+  stimulus_version_target text not null default 'birthday-friend-a-web-v2',
   phase text not null default 'locked' check(phase in ('locked','candidates','decision','survey','complete','timeout','skipped')),
   phase_started_at timestamptz,
   phase_effective_ms integer not null default 0 check(phase_effective_ms between 0 and 180000),
@@ -166,7 +173,7 @@ create table public.study_events (
   client_at timestamptz,
   server_at timestamptz not null default clock_timestamp(),
   idempotency_key uuid,
-  experiment_version text not null default '7.0.0'
+  experiment_version text not null default '7.1.0'
 );
 create unique index study_events_trial_key on public.study_events(trial_id,idempotency_key);
 create unique index study_scripted_message_once on public.study_events(trial_id,event_type,target)
@@ -192,11 +199,15 @@ create function public.study_assign_participant_number()
 returns trigger language plpgsql security definer set search_path=public as $$
 begin
   if tg_table_name='study_trials' then
-    new.participant_number := (select participant_number from public.study_people where id=new.person_id);
+    select case when new.role='giver' then coalesce(p.giver_number,p.participant_number) else coalesce(p.recipient_number,p.participant_number) end
+      into new.participant_number from public.study_people p where p.id=new.person_id;
   elsif tg_table_name='study_messages' then
     new.participant_number := (select participant_number from public.study_trials where id=new.trial_id);
   elsif tg_table_name='study_events' then
-    new.participant_number := (select participant_number from public.study_people where id=new.person_id);
+    select case when new.role='giver' then coalesce(p.giver_number,p.participant_number)
+                when new.role='recipient' then coalesce(p.recipient_number,p.participant_number)
+                else p.participant_number end
+      into new.participant_number from public.study_people p where p.id=new.person_id;
   end if;
   if new.participant_number is null then raise exception 'PARTICIPANT_NUMBER_MISSING'; end if;
   return new;
@@ -212,23 +223,33 @@ create function public.study_enroll(p_role text,p_browser_key uuid,p_participant
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare p public.study_people%rowtype; block_index bigint; within_block integer; sequence_index integer;
   sequence_value text[]; role_name text; item text; pos integer;
+  entered_number bigint; recipient_code text; giver_code text; expected_code text;
 begin
   p_participant_number:=upper(trim(p_participant_number));
   if p_role not in ('giver','recipient') or p_browser_key is null
-    or p_participant_number is null or p_participant_number !~ '^[A-Z0-9-]{1,12}$'
+    or p_participant_number is null or p_participant_number !~ '^K[0-9]{2,8}$'
     then raise exception 'INVALID_ENROLLMENT'; end if;
+  entered_number:=substring(p_participant_number from 2)::bigint;
+  if entered_number<1 or p_participant_number<>('K'||lpad(entered_number::text,2,'0'))
+    or (p_role='giver' and entered_number%2<>0)
+    or (p_role='recipient' and entered_number%2<>1)
+    then raise exception 'INVALID_ENROLLMENT'; end if;
+  recipient_code:='K'||lpad((case when p_role='giver' then entered_number-1 else entered_number end)::text,2,'0');
+  giver_code:='K'||lpad((case when p_role='giver' then entered_number else entered_number+1 end)::text,2,'0');
+  if length(giver_code)>9 then raise exception 'INVALID_ENROLLMENT'; end if;
   perform pg_advisory_xact_lock(hashtext('study-enrollment'));
   select * into p from public.study_people where browser_key=p_browser_key;
   if found then
-    if p.participant_number<>p_participant_number then raise exception 'PARTICIPANT_NUMBER_MISMATCH'; end if;
+    expected_code:=case when p_role='giver' then p.giver_number else p.recipient_number end;
+    if expected_code is distinct from p_participant_number then raise exception 'PARTICIPANT_NUMBER_MISMATCH'; end if;
     return jsonb_build_object('person_id',p.id,'participant_number',p.participant_number,
       'enrollment_number',p.enrollment_number,'active_role',p.active_role);
   end if;
-  if exists(select 1 from public.study_people where participant_number=p_participant_number)
+  if exists(select 1 from public.study_people where giver_number=giver_code or recipient_number=recipient_code or participant_number in (giver_code,recipient_code))
     then raise exception 'PARTICIPANT_NUMBER_TAKEN'; end if;
-  insert into public.study_people(participant_number,browser_key,first_role,active_role,role_order,
+  insert into public.study_people(participant_number,giver_number,recipient_number,browser_key,first_role,active_role,role_order,
     condition_order,order_index,enrollment_block,profile_code)
-  values(p_participant_number,p_browser_key,p_role,p_role,array[p_role,case when p_role='giver' then 'recipient' else 'giver' end],
+  values(p_participant_number,giver_code,recipient_code,p_browser_key,p_role,p_role,array[p_role,case when p_role='giver' then 'recipient' else 'giver' end],
     array['A','C','D','B'],0,1,'R1') returning * into p;
   block_index:=(p.enrollment_number-1)/5;
   within_block:=((p.enrollment_number-1)%5)::integer;
@@ -244,10 +265,10 @@ begin
   foreach role_name in array p.role_order loop
     for pos in 1..4 loop
       item:=sequence_value[pos];
-      insert into public.study_trials(person_id,role,order_position,condition,candidate_builder,decision_actor,profile_code)
+      insert into public.study_trials(person_id,role,order_position,condition,candidate_builder,decision_actor,profile_code,stimulus_version_target)
       values(p.id,role_name,pos,item,
         case when item in ('A','C') then 'human' else 'agent' end,
-        case when item in ('A','B') then 'human' else 'agent' end,p.profile_code);
+        case when item in ('A','B') then 'human' else 'agent' end,p.profile_code,'birthday-friend-a-web-v2');
     end loop;
   end loop;
   insert into public.study_events(person_id,role,actor,origin,event_type,payload)
@@ -366,7 +387,7 @@ declare t public.study_trials%rowtype; now_at timestamptz:=clock_timestamp(); ne
 begin
   select * into t from public.study_trials where id=p_trial_id and person_id=p_person_id for update;
   if t.id is null or t.phase not in ('candidates','decision') then raise exception 'PHASE_NOT_ACTIVE'; end if;
-  if t.phase_effective_ms<60000 then raise exception 'MINIMUM_EXPOSURE_REQUIRED'; end if;
+  if t.phase_effective_ms<30000 then raise exception 'MINIMUM_EXPOSURE_REQUIRED'; end if;
   if t.phase='candidates' then
     if jsonb_array_length(t.candidate_snapshots)<>3 then raise exception 'THREE_CANDIDATES_REQUIRED'; end if;
     next_phase:='decision';
@@ -607,6 +628,7 @@ begin
   if t.id is null or t.role<>'recipient' or t.phase<>'candidates' then raise exception 'OBSERVATION_NOT_ALLOWED'; end if;
   if t.stimulus_id is not null then return jsonb_build_object('attached',true,'idempotent',true); end if;
   select * into s from public.study_stimuli where profile_code=t.profile_code and condition=t.condition
+    and stimulus_version=t.stimulus_version_target
     and approved_at is not null order by approved_at desc limit 1;
   if s.id is null then raise exception 'APPROVED_STIMULUS_MISSING'; end if;
   select count(*),min(candidate_snapshots::text)::jsonb into approved_count,baseline

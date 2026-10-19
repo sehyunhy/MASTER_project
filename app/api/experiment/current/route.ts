@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const currentMessages = role === "recipient" ? visibleRecipientMessages(messages??[],trial) : messages ?? [];
     const safeTrial = role === "recipient" ? visibleRecipientTrial(trial,currentMessages) : trial;
     return NextResponse.json({
-      person: { id: person.id, participantNumber:person.participant_number,enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
+      person: { id: person.id, participantNumber:trial.participant_number,enrollmentNumber: person.enrollment_number, roleOrder: person.role_order,
         conditionOrder: person.condition_order, enrollmentBlock: person.enrollment_block, currentRole: person.active_role },
       trial: safeTrial, trials: [safeTrial], messages: currentMessages, profile,
       aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),

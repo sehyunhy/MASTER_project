@@ -44,14 +44,14 @@ export function recipientStimulusRows(input: Preparation) {
     ];
     if (condition === "A" || condition === "C") {
       snapshots.forEach((product, index) => {
-        const base = [2_000,20_000,38_000][index];
+        const base = [1_000,9_000,17_000][index];
         transcript.push(
           message("candidates","giver","candidate_request",
             `친구 A의 생일 선물로 ${product.category} 종류에서 후보 한 개를 찾아줘.`,base),
           message("candidates","agent","candidate_proposal",
-            `확인한 상품 정보에서 후보 ${index+1}을(를) 제시합니다.`,base+8_000,{product}),
+            `확인한 상품 정보에서 후보 ${index+1}을(를) 제시합니다.`,base+3_000,{product}),
           message("candidates","giver","candidate_confirmed",
-            `${product.name_ko}을(를) 후보 ${index+1}에 담겠습니다.`,base+14_000,{product}),
+            `${product.name_ko}을(를) 후보 ${index+1}에 담겠습니다.`,base+6_000,{product}),
         );
       });
     } else {

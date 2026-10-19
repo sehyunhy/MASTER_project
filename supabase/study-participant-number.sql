@@ -135,3 +135,11 @@ grant execute on function public.study_enroll(text,uuid,text) to service_role;
 grant execute on function public.study_begin_new_person(uuid,text,uuid,text) to service_role;
 commit;
 notify pgrst, 'reload schema';
+
+-- SQL Editor should display exactly four rows after successful installation.
+select table_name, column_name
+from information_schema.columns
+where table_schema='public'
+  and table_name in ('study_people','study_trials','study_messages','study_events')
+  and column_name='participant_number'
+order by table_name;
