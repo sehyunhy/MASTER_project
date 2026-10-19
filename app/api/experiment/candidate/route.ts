@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{
         source:"web_search",mode:"human_one",model:live.model,response_id:live.responseId,
         response_ids:live.responseIds,latency_ms:live.latencyMs,urls_seen:live.urlsSeen,
+        verification:live.verification,
         verified_product_ids:live.products.map(item=>item.source_product_id),
       }});
       const available=live.products;
@@ -103,6 +104,7 @@ export async function POST(request: Request) {
       await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{source:"web_search",
         mode:"agent_batch",model:live.model,response_id:live.responseId,latency_ms:live.latencyMs,
         response_ids:live.responseIds,urls_seen:live.urlsSeen,
+        verification:live.verification,
         verified_product_ids:available.map(item=>item.source_product_id)}});
       if (available.length<3) throw new Error("LIVE_PRODUCTS_INCOMPLETE");
       const savedProducts=await db.from("study_products").upsert(available,{onConflict:"source_product_id"});

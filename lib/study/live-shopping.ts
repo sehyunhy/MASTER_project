@@ -14,6 +14,21 @@ export type LiveStudyProduct = StudyProduct & {
   price_original_usd: number; fx_rule: string; source_url: string; reviewed: true;
 };
 
+type VerificationReason = "invalid_url" | "http_forbidden" | "http_rate_limited" | "http_other" |
+  "fetch_failed" | "redirect_rejected" | "non_html" | "page_too_large" |
+  "no_product_metadata" | "missing_product_facts" | "over_budget";
+type VerificationResult = { product: LiveStudyProduct; reason?: never } |
+  { product: null; reason: VerificationReason };
+type VerificationCounts = Record<VerificationReason, number>;
+
+function emptyVerificationCounts(): VerificationCounts {
+  return { invalid_url:0,http_forbidden:0,http_rate_limited:0,http_other:0,fetch_failed:0,
+    redirect_rejected:0,non_html:0,page_too_large:0,no_product_metadata:0,
+    missing_product_facts:0,over_budget:0 };
+}
+
+const verificationReasons = new Set<VerificationReason>(Object.keys(emptyVerificationCounts()) as VerificationReason[]);
+
 function shopUrl(value: string): URL | null {
   try {
     const url = new URL(value);
@@ -92,7 +107,7 @@ function imageUrl(value: unknown): string {
   catch { return ""; }
 }
 
-async function readPage(initial: URL): Promise<{url:URL;html:string} | null> {
+async function readPage(initial: URL): Promise<{url:URL;html:string}> {
   let url=initial;
   for (let redirects=0;redirects<3;redirects++) {
     const response = await fetch(url.href, { redirect:"manual", cache:"no-store",
@@ -100,12 +115,16 @@ async function readPage(initial: URL): Promise<{url:URL;html:string} | null> {
       signal:AbortSignal.timeout(9000) });
     if (response.status>=300 && response.status<400) {
       const location=response.headers.get("location");
-      if (!location) return null;
+      if (!location) throw new Error("redirect_rejected");
       const next=shopUrl(new URL(location,url).href);
-      if (!next) return null;
+      if (!next) throw new Error("redirect_rejected");
       url=next;continue;
     }
-    if (!response.ok || !response.headers.get("content-type")?.includes("text/html") || !response.body) return null;
+    if (response.status===401 || response.status===403) throw new Error("http_forbidden");
+    if (response.status===429) throw new Error("http_rate_limited");
+    if (!response.ok) throw new Error("http_other");
+    if (!response.headers.get("content-type")?.includes("text/html") || !response.body)
+      throw new Error("non_html");
     const reader=response.body.getReader();
     const decoder=new TextDecoder();
     let html="", size=0;
@@ -113,12 +132,12 @@ async function readPage(initial: URL): Promise<{url:URL;html:string} | null> {
       const {done,value}=await reader.read();
       if (done) break;
       size+=value.byteLength;
-      if (size>maxPageBytes) { await reader.cancel(); return null; }
+      if (size>maxPageBytes) { await reader.cancel(); throw new Error("page_too_large"); }
       html+=decoder.decode(value,{stream:true});
     }
     return {url,html:html+decoder.decode()};
   }
-  return null;
+  throw new Error("redirect_rejected");
 }
 
 function productMeta(html:string): Record<string,string> {
@@ -126,19 +145,30 @@ function productMeta(html:string): Record<string,string> {
   for (const tag of html.match(/<meta\b[^>]*>/gi)??[]) {
     const attrs:Record<string,string>={};
     for (const match of tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gi)) attrs[match[1].toLowerCase()]=match[3];
-    const key=attrs.property??attrs.name;
+    const key=attrs.property??attrs.name??attrs.itemprop;
     if (key && attrs.content) meta[key.toLowerCase()]=attrs.content;
   }
   return meta;
 }
 
-async function verifyProductPage(rawUrl: string, budgetKrw: number): Promise<LiveStudyProduct | null> {
+function metaUsdPrice(meta: Record<string,string>): number | null {
+  const currency=meta["product:price:currency"]??meta["og:price:currency"]??meta.pricecurrency;
+  if (currency?.toUpperCase()!=="USD") return null;
+  const raw=meta["product:price:amount"]??meta["og:price:amount"]??meta.price;
+  const price=Number(raw?.replace(/[$,]/g,""));
+  return Number.isFinite(price) && price>0 ? price : null;
+}
+
+async function verifyProductPage(rawUrl: string, budgetKrw: number): Promise<VerificationResult> {
   const url=shopUrl(rawUrl);
-  if (!url) return null;
-  let page: {url:URL;html:string} | null;
+  if (!url) return {product:null,reason:"invalid_url"};
+  let page: {url:URL;html:string};
   try { page=await readPage(url); }
-  catch { return null; }
-  if (!page) return null;
+  catch (cause) {
+    const message=cause instanceof Error?cause.message:"";
+    return {product:null,reason:verificationReasons.has(message as VerificationReason)
+      ? message as VerificationReason : "fetch_failed"};
+  }
   const scripts=[...page.html.matchAll(/<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi)];
   const candidates:Record<string,unknown>[]=[];
   for (const script of scripts) {
@@ -147,16 +177,21 @@ async function verifyProductPage(rawUrl: string, budgetKrw: number): Promise<Liv
     candidates.push(...productNodes(json));
   }
   const meta=productMeta(page.html);
-  if (meta["product:price:amount"] && meta["product:price:currency"]?.toUpperCase()==="USD") {
-    candidates.push({name:meta["og:title"],description:meta["og:description"],image:meta["og:image"],
-      category:"상품 종류 미기록",offers:{price:meta["product:price:amount"],priceCurrency:"USD"}});
-  }
+  const metaPrice=metaUsdPrice(meta);
+  if (metaPrice!==null) candidates.push({name:meta["og:title"],description:meta["og:description"],
+    image:meta["og:image"]??meta["twitter:image"],category:"상품 종류 미기록",
+    offers:{price:metaPrice,priceCurrency:"USD"}});
+  if (!candidates.length) return {product:null,reason:"no_product_metadata"};
+  let hadCompleteFacts=false;
   for (const product of candidates) {
-      const name=plain(product.name,500);
-      const description=plain(product.description);
-      const image=imageUrl(product.image);
-      const usd=offerPrice(product);
+      // Product JSON-LD and page metadata may contain complementary facts for
+      // the same seller page. Both are read from that page, never from Claude.
+      const name=plain(product.name??meta["og:title"],500);
+      const description=plain(product.description??meta["og:description"]);
+      const image=imageUrl(product.image)||imageUrl(meta["og:image"]??meta["twitter:image"]);
+      const usd=offerPrice(product)??metaPrice;
       if (!name || !image || usd===null) continue;
+      hadCompleteFacts=true;
       const priceKrw=Math.round(usd*fixedUsdToKrw/100)*100;
       if (priceKrw<100 || priceKrw>Math.min(budgetKrw,50000)) continue;
       // A product ID identifies the verified facts shown to participants. If a
@@ -164,21 +199,22 @@ async function verifyProductPage(rawUrl: string, budgetKrw: number): Promise<Liv
       // create a new row instead of altering an approved recipient stimulus.
       const identity=createHash("sha256").update(JSON.stringify({url:page.url.href,name,description,image,usd,
         category:plain(product.category,200)})).digest("hex").slice(0,24);
-      return {
+      return {product:{
         source_product_id:`web:${identity}`, dataset_version:`live-web-${new Date().toISOString()}`,
         profile_codes:["R1","R2","R3","R4"], name_original:name, name_ko:name,
         description_original:description || name, image_url:image,
         category:plain(product.category,200) || "상품 종류 미기록",
         price_original_usd:Math.round(usd*100)/100, price_krw:priceKrw,
         fx_rule:"fixed-1350-round-100", source_url:page.url.href, reviewed:true,
-      };
+      }};
   }
-  return null;
+  return {product:null,reason:hadCompleteFacts?"over_budget":"missing_product_facts"};
 }
 
 export async function searchLiveProducts(input: {
   request: string; profile: StudyProfile; excludedIds: string[]; minimum?: number;
-}): Promise<{products: LiveStudyProduct[]; model: string; responseId: string; responseIds:string[]; latencyMs: number; urlsSeen: number}> {
+}): Promise<{products: LiveStudyProduct[]; model: string; responseId: string; responseIds:string[];
+  latencyMs: number; urlsSeen: number; verification: VerificationCounts}> {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY_MISSING");
   const model=anthropicModel();
   const began=performance.now();
@@ -189,6 +225,7 @@ export async function searchLiveProducts(input: {
   const products=new Map<string,LiveStudyProduct>();
   const searchedUrls=new Set<string>();
   const responseIds:string[]=[];
+  const verification=emptyVerificationCounts();
   for (let attempt=0;attempt<2 && products.size<minimum;attempt++) {
     const userMessage={role:"user" as const,content:JSON.stringify({request:input.request,
       recipient:{interests:input.profile.hobbies,recent_interest:input.profile.recent_interest,
@@ -211,9 +248,12 @@ export async function searchLiveProducts(input: {
     const urls=searchResultUrls(blocks).filter(url=>!searchedUrls.has(url));
     urls.forEach(url=>searchedUrls.add(url));
     const checked=await Promise.all(urls.map(url=>verifyProductPage(url,input.profile.gift_budget)));
-    for (const item of checked) if (item && !input.excludedIds.includes(item.source_product_id))
-      products.set(item.source_product_id,item);
+    for (const result of checked) {
+      if (!result.product) { verification[result.reason]++; continue; }
+      if (!input.excludedIds.includes(result.product.source_product_id))
+        products.set(result.product.source_product_id,result.product);
+    }
   }
   return {products:[...products.values()].slice(0,5),model,responseId:responseIds.at(-1)??"",
-    responseIds,latencyMs:Math.round(performance.now()-began),urlsSeen:searchedUrls.size};
+    responseIds,latencyMs:Math.round(performance.now()-began),urlsSeen:searchedUrls.size,verification};
 }
