@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
-import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
-import { searchLiveProducts } from "@/lib/study/live-shopping";
+import { isBroadDelegation, preflightHumanRequest, createStudyProduct, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
 import { preparedProducts, PREPARED_DATASET_VERSION } from "@/lib/study/prepared-products";
+import { simulatedProductImage } from "@/lib/study/simulated-image";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
 export const maxDuration = 120;
@@ -58,40 +58,28 @@ export async function POST(request: Request) {
       await logStudyEvent(db, { personId, trial, type: "candidate_request_sent", key: body.key,
         payload: { slot: trial.candidate_snapshots.length + 1, request: requestText } });
       const existing = trial.candidate_snapshots as StudyProduct[];
-      const live = await searchLiveProducts({request:requestText,profile,
-        excludedIds:existing.map(item=>item.source_product_id)});
-      await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{
-        source:"web_search",mode:"human_one",model:live.model,response_id:live.responseId,
-        response_ids:live.responseIds,latency_ms:live.latencyMs,urls_seen:live.urlsSeen,
-        verification:live.verification,
-        verified_product_ids:live.products.map(item=>item.source_product_id),
+      const result=await createStudyProduct({profile,condition:trial.condition,existing,request:requestText});
+      const generated=result.value;
+      const selected={
+        source_product_id:`study-simulated:${trial.id}:${body.key}`,
+        dataset_version:"study-simulated-v1",profile_codes:[trial.profile_code],
+        name_original:generated.name_ko,name_ko:generated.name_ko,
+        description_original:`연구용 가상 상품입니다. 상품 정보: ${generated.info}\n연구용 예시 후기(실제 구매 후기 아님): ${generated.example_review}`,
+        image_url:simulatedProductImage(generated.category),category:generated.category,
+        price_original_usd:0,price_krw:generated.price_krw,fx_rule:"simulated_krw_price",
+        source_url:null,reviewed:true,
+      };
+      const savedProduct=await db.from("study_products").upsert(selected,{onConflict:"source_product_id"});
+      if (savedProduct.error) throw savedProduct.error;
+      await logStudyEvent(db,{personId,trial,type:"simulated_product_created",payload:{
+        source_product_id:selected.source_product_id,model:result.model,response_id:result.responseId,
+        latency_ms:result.latencyMs,prompt_version:STUDY_PROMPT_VERSION,
       }});
-      const available=live.products;
-      if (available.length) {
-        const savedProducts=await db.from("study_products").upsert(available,{onConflict:"source_product_id"});
-        if (savedProducts.error) throw savedProducts.error;
-      }
-      const result=available.length ? await proposeOne({profile,condition:trial.condition,
-        products:available,existing,request:requestText}) : null;
-      if (!result?.value.valid_request) {
-        const clarification = "요청하신 방향의 상품을 현재 확인 가능한 판매 페이지에서 찾지 못했습니다. 같은 후보에서 요청을 다듬어 다시 시도해 주세요.";
-        const clarificationMessage = await db.from("study_messages").insert({ trial_id: trial.id, phase: "candidates", speaker: "agent",
-          origin: "agent", kind: "clarification", content: clarification,
-          payload: { model: result?.model ?? null, response_id: result?.responseId ?? null, latency_ms: result?.latencyMs ?? null,
-            request_key: body.key } });
-        if (clarificationMessage.error) throw clarificationMessage.error;
-        await logStudyEvent(db, { personId, trial, type: "agent_no_matching_product",
-          payload: { model: result?.model ?? null, response_id: result?.responseId ?? null, latency_ms: result?.latencyMs ?? null } });
-        await db.rpc("study_release_agent", { p_trial_id: trial.id, p_person_id: personId, p_key: body.key });
-        claimed = false;
-        return NextResponse.json({ clarification });
-      }
-      const selected=available.find(item=>item.source_product_id===result.value.product_id)!;
-      const evidence=verifiedEvidence(selected,result.value.evidence_quote);
+      const evidence=verifiedEvidence(selected,generated.info.slice(0,160));
       const saved = await db.rpc("study_store_proposal", { p_trial_id: trial.id, p_person_id: personId,
-        p_request_key: body.key, p_source_id: result.value.product_id,
-        p_reply: "확인한 상품 정보에서 후보 한 개를 제안했습니다.",
-        p_reason: groundedReason(profile,selected,evidence),
+        p_request_key: body.key, p_source_id: selected.source_product_id,
+        p_reply: "요청을 바탕으로 연구용 가상 상품 후보 한 개를 구성했습니다.",
+        p_reason: `연구용 가상 상품입니다. ${generated.reason} 상품 정보: ${evidence}`,
         p_model: result.model, p_response_id: result.responseId,
         p_latency_ms: Math.round(performance.now()-requestBegan),p_evidence_quote:evidence });
       if (saved.error) throw saved.error;

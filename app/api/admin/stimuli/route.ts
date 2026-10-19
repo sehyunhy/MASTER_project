@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { proposeThree, chooseFinal } from "@/lib/study/agent";
-import { preparedProducts, PREPARED_DATASET_VERSION } from "@/lib/study/prepared-products";
+import { preparedProducts, PREPARED_DATASET_VERSION, FIXED_STUDY_DATASET_VERSION } from "@/lib/study/prepared-products";
 import { RECIPIENT_SEARCH_PROFILE, RECIPIENT_STIMULUS_VERSION } from "@/lib/study/recipient-context";
 import { recipientStimulusRows } from "@/lib/study/recipient-stimulus";
 
@@ -72,7 +72,7 @@ export async function POST(request:Request) {
     if (verified?.length!==3 || products.some(snapshot=>{
       const source=verified.find(item=>item.source_product_id===snapshot.source_product_id);
       return !source?.reviewed ||
-        !(source.dataset_version===PREPARED_DATASET_VERSION || source.dataset_version.startsWith("live-web-")) ||
+        !(source.dataset_version===PREPARED_DATASET_VERSION || source.dataset_version===FIXED_STUDY_DATASET_VERSION || source.dataset_version.startsWith("live-web-")) ||
         source.price_krw>RECIPIENT_SEARCH_PROFILE.gift_budget ||
         source.name_original!==snapshot.name_original || source.price_krw!==snapshot.price_krw ||
         source.image_url!==snapshot.image_url;

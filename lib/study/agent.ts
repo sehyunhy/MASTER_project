@@ -25,7 +25,7 @@ async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input
     model, max_tokens: 650, ...shortResponseOptions(model),
     system: input.instructions,
     messages: [{ role: "user", content: JSON.stringify({ context: input.context, ...input.fields }) }],
-    tools: [{ name, description: "Return only the structured, source-grounded study decision", input_schema: {
+    tools: [{ name, description: "Return the structured gift study result", input_schema: {
       type: "object", properties: schemaToToolProperties(name), required: Object.keys(schemaToToolProperties(name)),
     } }],
     tool_choice: { type: "tool", name },
@@ -37,9 +37,9 @@ async function structured<T extends z.ZodTypeAny>(name: string, schema: T, input
 }
 
 function schemaToToolProperties(name: string): Record<string, unknown> {
-  if (name === "propose_one") return {
-    valid_request: { type: "boolean" }, clarification: { type: "string" },
-    product_id: { type: "string" }, evidence_quote: { type: "string" },
+  if (name === "create_study_product") return {
+    name_ko: { type: "string" }, category: { type: "string" }, info: { type: "string" },
+    example_review: { type: "string" }, price_krw: { type: "integer" }, reason: { type: "string" },
   };
   if (name === "propose_three") return {
     product_ids: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 },
@@ -48,9 +48,25 @@ function schemaToToolProperties(name: string): Record<string, unknown> {
   return { product_id: { type: "string" }, evidence_quote: { type: "string" } };
 }
 
-const oneSchema = z.object({ valid_request: z.boolean(), clarification: z.string(), product_id: z.string(), evidence_quote: z.string() });
 const batchSchema = z.object({ product_ids: z.array(z.string()).length(3), evidence_quotes: z.array(z.string()).length(3) });
 const finalSchema = z.object({ product_id: z.string(), evidence_quote: z.string() });
+const generatedSchema = z.object({ name_ko:z.string().trim().min(3).max(90),
+  category:z.string().trim().min(2).max(50), info:z.string().trim().min(12).max(500),
+  example_review:z.string().trim().min(10).max(300),
+  price_krw:z.number().int().min(1000).max(50000), reason:z.string().trim().min(10).max(400) });
+
+export async function createStudyProduct(input: { profile: StudyProfile; condition: string;
+  request: string; existing: StudyProduct[] }) {
+  const result=await structured("create_study_product",generatedSchema,{
+    instructions: "Create exactly ONE plausible, clearly fictional gift product for a Korean research simulation. Follow the participant's requested product direction even when it differs from the recipient profile. Do not claim that a seller, review, price, stock, or product page was checked. The example_review is fictional sample text, not a real customer's review. Provide a simple product name, concrete basic information, a plausible KRW study price within the budget, and a reason tied to the participant request. Avoid any product names already confirmed in this trial. Return the structured fields only.",
+    context:{condition:input.condition,recipient:input.profile,budget_krw:input.profile.gift_budget,
+      already_confirmed:input.existing.map(item=>item.name_ko)},
+    fields:{participant_request:input.request},
+  });
+  if(result.value.price_krw>input.profile.gift_budget || input.existing.some(item=>item.name_ko===result.value.name_ko))
+    throw new Error("GENERATED_PRODUCT_INVALID");
+  return result;
+}
 
 export function verifiedEvidence(product: StudyProduct, quote: string) {
   const normalized=quote.trim();
@@ -91,18 +107,6 @@ const common = (profile: StudyProfile, condition: string, products: StudyProduct
   already_confirmed: existing.map(product => product.source_product_id),
   authority: condition === "A" || condition === "B" ? "human_final" : "agent_final",
 });
-
-export async function proposeOne(input: { profile: StudyProfile; condition: string; products: StudyProduct[]; existing: StudyProduct[]; request: string }) {
-  const result = await structured("propose_one", oneSchema, {
-    instructions: "You assist a Korean gift-choice study. The participant may freely explore product directions, including ones different from the supplied recipient profile. Do not reject a specific request just because its category or interest differs from that profile. Choose exactly ONE product ID from the supplied verified product search results, excluding confirmed IDs, only if a product reasonably matches the requested direction. If no product reasonably matches, set valid_request=false. Do not substitute an unrelated product or invent one. evidence_quote must be an exact 8-160 character substring of the chosen product's source name or description excerpt when valid_request=true. Never invent product facts. The server validates the ID and quote.",
-    context: common(input.profile, input.condition, input.products, input.existing), fields: { participant_request: input.request },
-  });
-  if (result.value.valid_request && !input.products.some(product => product.source_product_id === result.value.product_id))
-    throw new Error("AGENT_PRODUCT_OUTSIDE_POOL");
-  if(result.value.valid_request)
-    verifiedEvidence(input.products.find(product=>product.source_product_id===result.value.product_id)!,result.value.evidence_quote);
-  return result;
-}
 
 export async function proposeThree(input: { profile: StudyProfile; condition: string; products: StudyProduct[] }) {
   const result = await structured("propose_three", batchSchema, {

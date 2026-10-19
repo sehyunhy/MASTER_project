@@ -4,7 +4,7 @@ import { MAXIMUM_PHASE_MS, MINIMUM_PHASE_MS } from "@/lib/study/config";
 
 type Role = "giver" | "recipient";
 type Product = { source_product_id: string; name_ko: string; name_original: string; description_original: string;
-  image_url: string; price_krw: number; price_original_usd?: number; category: string; reason?: string; source_url?: string };
+  image_url: string; price_krw: number; price_original_usd?: number; category: string; reason?: string; source_url?: string | null };
 type Trial = { id: string; role: Role; condition: "A"|"B"|"C"|"D"; order_position: number;
   profile_code: string;
   candidate_builder: "human"|"agent"; decision_actor: "human"|"agent"; phase: string; phase_effective_ms: number;
@@ -27,12 +27,16 @@ const id = () => crypto.randomUUID();
 
 function ProductCard({ product, onOpen, action, disabled }: { product: Product; onOpen: (product: Product) => void;
   action?: { label: string; run: () => void }; disabled?: boolean }) {
+  const simulated=product.source_product_id.startsWith("study-simulated:") || product.source_product_id.startsWith("study-fixed:");
   return <article className="study-product">
     <button type="button" className="study-product-main" onClick={() => onOpen(product)}>
       <span className="study-product-image">{product.image_url ? <img src={product.image_url} alt="" loading="lazy" /> : "🎁"}</span>
       <span className="study-product-name">{product.name_ko}</span>
       <strong>{Number(product.price_krw).toLocaleString()}원</strong>
       <small>{product.category}</small>
+      {simulated && <small>연구용 가상 상품 · 이미지는 예시</small>}
+      {simulated && <span>{product.description_original.split("연구용 예시 후기")[0].replace("연구용 가상 상품입니다. 상품 정보:","").trim()}</span>}
+      {simulated && <small>예시 후기: {product.description_original.split("연구용 예시 후기(실제 구매 후기 아님):")[1]?.trim() ?? "내용 없음"} (실제 구매 후기 아님)</small>}
       {product.reason && <span className="study-product-reason">{product.reason}</span>}
       <span className="study-product-link">상품 상세 보기</span>
     </button>
@@ -458,7 +462,7 @@ export function Experiment({ role }: { role: Role }) {
         <h2>{detail.name_ko}</h2><strong>{Number(detail.price_krw).toLocaleString()}원</strong>
         <p>{detail.name_original}</p><p>{detail.description_original}</p>
         {detail.source_url && <a href={detail.source_url} target="_blank" rel="noreferrer">원본 상품 정보</a>}
-        <small>상품 기록 또는 판매 페이지에서 확인한 가격을 연구용 고정 환율로 환산했습니다. 실제 결제가는 다를 수 있습니다.</small>
+        <small>{detail.source_product_id.startsWith("study-")?"가상 상품·이미지·후기는 연구용 예시입니다. 표시 가격은 연구용 가상 가격입니다.":"이 가격은 과거 상품 기록을 연구용 고정 환율로 환산한 값입니다. 실제 결제가는 다를 수 있습니다."}</small>
       </div></div>}
   </main>;
 }
