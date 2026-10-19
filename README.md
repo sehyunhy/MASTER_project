@@ -28,11 +28,12 @@
 1. 새 DB를 만드는 경우에만 SQL Editor에서 [study-fresh.sql](supabase/study-fresh.sql)을 실행합니다. 이 파일은 기존 연구 테이블을 지우고 `study_people`, `study_products`, `study_stimuli`, `study_trials`, `study_messages`, `study_events` **6개만** 만듭니다. 각 함수와 접근 제한도 생성합니다.
    이미 이 여섯 테이블로 운영 중이라면 다시 실행하지 마세요. 참가번호 컬럼이 아직 없다면 [study-participant-number.sql](supabase/study-participant-number.sql)을 먼저 실행하고, 이어서 [study-k-ids-30s.sql](supabase/study-k-ids-30s.sql)을 실행하세요. 이미 참가번호 컬럼을 적용했다면 두 번째 SQL만 실행합니다. 이 SQL은 기존 기록을 보존하면서 새 ID를 K 홀수·짝수 역할별 쌍으로 기록하고 서버 단계 전환 기준을 30초로 바꿉니다. 구버전에서 시간초과 후 다음 조건 기능이 아직 없다면 [study-timeout-continue.sql](supabase/study-timeout-continue.sql)을 먼저 적용하세요. 기존 [study-new-participant.sql](supabase/study-new-participant.sql)은 새 참가자 ID를 받지 않는 예전 RPC를 설치하므로 더 이상 적용하지 마세요.
    지금까지의 파일럿 데이터를 모두 삭제하려면 스키마 SQL 적용 후 [study-reset-test-rows.sql](supabase/study-reset-test-rows.sql)을 별도로 실행합니다. 여섯 테이블의 모든 행이 삭제되며 상품과 P02 승인 자극물도 함께 사라집니다. 실제 연구 데이터가 섞여 있다면 실행 전에 확인하세요.
-2. Vercel 서버 환경변수에 `SUPABASE_URL`, 서비스 역할 키, `ANTHROPIC_API_KEY`, 실제 접근 가능한 `ANTHROPIC_MODEL`, `ADMIN_PASSWORD`를 설정하고 배포합니다. Claude Console에서 **Web search**를 활성화합니다. 브라우저용 `NEXT_PUBLIC_` 변수에 비밀 키를 넣지 않습니다.
-3. 관리자 화면 `/admin`에서 **웹 검색으로 후보 준비**를 실행합니다. 서버가 Claude의 실시간 웹 검색으로 상품 페이지를 찾고, 상품명·가격·이미지를 직접 확인한 후보 세 개와 최종 선물 하나를 `study_products`와 `study_stimuli`의 **미승인** 16개 행에 저장합니다. 연구자는 상품 사진·가격·출처와 같은 후보·최종 선물 여부를 검토한 뒤 **승인**합니다. 승인 전에는 새 P02 조건을 시작할 수 없습니다. 승인하면 4개 내부 연결 코드 × A–D 모두 같은 후보·최종 선물을 사용합니다.
-4. P01은 A·C의 개별 상품 요청과 B·D의 후보 세 개 준비 시마다 Claude 실시간 웹 검색을 사용합니다. 저장된 CSV 상품은 새 추천 경로의 검색 풀에 들어가지 않습니다. 이전에 시작한 trial의 상품 스냅샷은 바꾸지 않습니다.
+2. 운영 중인 DB에 [study-prepared-nine.sql](supabase/study-prepared-nine.sql)을 **한 번 실행**합니다. Walmart CSV 원본의 상품 9개를 `study_products`에 넣고, Agent 후보 준비가 3분 안에 끝나지 않으면 노출 0초의 준비 실패로 기록하여 다음 조건으로 넘어갈 수 있게 합니다. 기존 참가 기록과 상품 스냅샷은 삭제하지 않습니다. 파일럿 전체 행을 지운 경우에는 이 SQL을 다시 실행해야 합니다.
+3. Vercel 서버 환경변수에 `SUPABASE_URL`, 서비스 역할 키, `ANTHROPIC_API_KEY`, 실제 접근 가능한 `ANTHROPIC_MODEL`, `ADMIN_PASSWORD`를 설정하고 배포합니다. A·C의 참가자 자유 요청에는 웹 검색을 계속 사용하므로 Claude Console에서 **Web search**를 활성화합니다. 브라우저용 `NEXT_PUBLIC_` 변수에 비밀 키를 넣지 않습니다.
+4. 관리자 화면 `/admin`에서 **저장된 상품으로 후보 준비**를 실행합니다. Claude가 준비된 9개 중 세 후보와 최종 선물 하나를 선택하고 P02의 **미승인** 16개 관찰 자료를 저장합니다. 연구자는 사진·가격·출처와 최종 선물을 검토한 뒤 **승인**합니다. 승인 전에는 새 P02 조건을 시작할 수 없습니다. 승인하면 4개 내부 프로필 코드 × A–D 모두 같은 후보·최종 선물을 사용합니다.
+5. P01의 B·D에서는 Claude가 해당 프로필에 허용된 저장 상품 중 세 개를 한 번에 고릅니다. A·C의 참가자 개별 요청은 계속 실시간 웹 상품 검색을 사용합니다. 이전에 저장된 trial의 상품 스냅샷은 바꾸지 않습니다.
 
-실시간 웹 검색은 Walmart·Target·Amazon의 상품 페이지로 제한합니다. 서버가 페이지의 구조화된 상품명·이미지·USD 가격을 직접 읽지 못하면 그 상품은 후보에 넣지 않습니다. 판매처가 자동 접근을 막거나 구조화된 가격을 제공하지 않으면 해당 요청은 실패할 수 있습니다. 웹 상품은 검색 당시 정보를 trial에 저장합니다. P01은 참가자마다 상품과 가격이 달라질 수 있으므로 본 실험 전 파일럿에서 이 변동을 검토해야 합니다. P02는 승인한 동일 후보와 최종 선물을 재사용합니다.
+준비된 9개 상품은 2024년 8월 Walmart CSV의 이름·설명·사진 URL·당시 USD 가격을 보존합니다. 연구용 원화 가격은 1 USD = 1,350원으로 환산해 100원 단위로 반올림한 값이며 현재 판매가격이나 재고를 뜻하지 않습니다. A·C의 실시간 검색은 Walmart·Target·Amazon 상품 페이지로 제한합니다. 페이지에서 상품명·이미지·USD 가격을 확인하지 못하면 해당 요청은 실패할 수 있습니다. P01의 자유 요청 결과는 참가자마다 달라질 수 있으므로 파일럿에서 변동을 검토해야 합니다.
 
 이전 설계의 Walmart 적재·P02 고정 초안 SQL은 저장소에서 제거했습니다. 운영 중인 DB에 `study-fresh.sql`을 다시 실행하면 참가자 기록이 삭제됩니다.
 
@@ -41,7 +42,7 @@
 ## 자료 구조와 분석
 
 - `study_people`: 연구자가 입력한 두 역할 ID(`recipient_number`, `giver_number`), 첫 입력 ID, 내부 UUID, 자동 등록 순번, 역할 순서, 5명 블록, 네 조건의 순서. 참가자 수 상한 없음.
-- `study_products`: 서버가 판매 페이지의 구조화된 데이터를 직접 확인한 웹 상품의 이름·가격·이미지·출처. 기존 CSV 상품이 남아 있어도 새 추천에는 사용하지 않습니다. 웹 상품은 `dataset_version`이 `live-web-...`이며, 참가자 trial에 당시의 스냅샷을 저장합니다.
+- `study_products`: 준비된 Walmart CSV 상품 9개와 A·C의 개별 요청에서 확인한 웹 상품을 함께 저장합니다. `dataset_version`으로 출처를 구분하고 trial에는 선택 당시의 상품 스냅샷을 저장합니다.
 - `study_stimuli`: P02용 연구자 검토 시나리오. 모든 내부 프로필 코드와 A–D에서 후보·가격·최종 상품을 동일하게 고정합니다.
 - `study_trials`: 참가번호와 사람×역할×조건, 과업 수행 주체, 후보·결과 스냅샷, 서버 유효 노출, 시간초과·종이 설문 완료.
 - `study_messages`: 참가번호와 해당 조건의 대화 순서, 발신자와 실제/Agent/구성 시나리오 출처.

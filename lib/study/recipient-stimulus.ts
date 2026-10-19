@@ -1,16 +1,15 @@
 import { verifiedEvidence } from "@/lib/study/agent";
-import type { LiveStudyProduct } from "@/lib/study/live-shopping";
+import type { PreparedStudyProduct } from "@/lib/study/prepared-products";
 import { RECIPIENT_STIMULUS_VERSION, RECIPIENT_STORY } from "@/lib/study/recipient-context";
 
 const profiles = ["R1", "R2", "R3", "R4"] as const;
 const conditions = ["A", "B", "C", "D"] as const;
 
 type Preparation = {
-  products: LiveStudyProduct[];
+  products: PreparedStudyProduct[];
   finalId: string;
   evidenceQuotes: string[];
-  searchModel: string;
-  searchResponseId: string;
+  catalogVersion: string;
   candidateModel: string;
   candidateResponseId: string;
   finalModel: string;
@@ -30,7 +29,7 @@ export function recipientStimulusRows(input: Preparation) {
   const selected = snapshots.find(item => item.source_product_id === input.finalId)!;
   const finalReason = `${selected.name_ko}을(를) 최종 선물로 정했습니다. 확인된 상품 설명: “${selected.evidence_quote}”`;
   const metadata = {
-    search_model: input.searchModel, search_response_id: input.searchResponseId,
+    catalog_version: input.catalogVersion,
     candidate_model: input.candidateModel, candidate_response_id: input.candidateResponseId,
     final_model: input.finalModel, final_response_id: input.finalResponseId,
   };

@@ -51,6 +51,7 @@ export function Experiment({ role }: { role: Role }) {
   const [detail,setDetail] = useState<Product|null>(null);
   const [pendingCandidate,setPendingCandidate] = useState<PendingCandidate|null>(null);
   const [seconds,setSeconds] = useState(0);
+  const [preparationWaitSeconds,setPreparationWaitSeconds] = useState(0);
   const [isVisible,setIsVisible] = useState(true);
   const tabId = useRef("");
   const automated = useRef("");
@@ -76,6 +77,7 @@ export function Experiment({ role }: { role: Role }) {
     if (!response.ok) throw new Error(result.error ?? "상태를 불러오지 못했습니다.");
     setState(result);
     setSeconds(Math.floor((result.trial.phase_effective_ms ?? 0)/1000));
+    if (result.trial.candidates_visible_at || result.trial.phase!=="candidates") setPreparationWaitSeconds(0);
     return result as State;
   },[role]);
 
@@ -156,7 +158,7 @@ export function Experiment({ role }: { role: Role }) {
     if (reasonTimer.current) clearTimeout(reasonTimer.current);
     draftTimer.current=null;reasonTimer.current=null;
     setDraft("");setReason("");setChosen("");setCode("");
-    setDetail(null);setPendingCandidate(null);setError("");
+    setDetail(null);setPendingCandidate(null);setError("");setPreparationWaitSeconds(0);
     draftStarted.current=false;reasonStarted.current=false;
     openedIds.current={};openAt.current=0;detailDwellMs.current=0;
     automated.current="";markedVisible.current="";scriptedSent.current.clear();
@@ -228,6 +230,7 @@ export function Experiment({ role }: { role: Role }) {
         const result=await response.json();
         if (!stopped && response.ok) {
           setSeconds(Math.floor(result.effective_ms/1000));
+          setPreparationWaitSeconds(result.waiting_for_candidates ? Math.floor((result.preparation_wait_ms??0)/1000) : 0);
           if (result.phase==="timeout") setError("");
           if (result.phase==="timeout" || role==="recipient") await refresh();
         }
@@ -331,6 +334,7 @@ export function Experiment({ role }: { role: Role }) {
   const maximumSeconds=MAXIMUM_PHASE_MS/1000;
   const remaining=Math.max(0,maximumSeconds-seconds);
   const minReady=seconds>=minimumSeconds;
+  const awaitingCandidates=trial?.phase==="candidates" && trial.candidate_builder==="agent" && !trial.candidates_visible_at;
   const selectedProduct=trial?.candidate_snapshots.find(product=>product.source_product_id===trial.final_product_id);
   return <main className="study-experience">
     <aside className="study-side">
@@ -346,7 +350,7 @@ export function Experiment({ role }: { role: Role }) {
         <header className="study-chat-header">
           <div className="study-chat-status"><span>11:03</span><span>▥ ● ▰</span></div>
           <div className="study-chat-heading"><span aria-hidden="true">🎁</span><div><strong>선물 상담</strong><small>{phaseTitle}</small></div><span className="study-condition-tag">조건 {trial?.condition??"…"} · {trial?.order_position??"…"}/4</span></div>
-          {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{trial.phase==="candidates"?"후보 3개 전체 단계":"최종 선택 단계"} · {!isVisible?"일시정지":minReady?"최소 확인 완료":`${minimumSeconds-seconds}초 후 다음 단계 가능`}</span><strong>{remaining}초 남음</strong><div><i style={{width:`${Math.min(100,seconds/minimumSeconds*100)}%`}} /></div></div>}
+          {trial && ["candidates","decision"].includes(trial.phase) && <div className="study-clock" aria-live="polite"><span>{awaitingCandidates?`후보 준비 중 · 상품 3개가 표시되면 ${minimumSeconds}초 시작`:`${trial.phase==="candidates"?"후보 3개 전체 단계":"최종 선택 단계"} · ${!isVisible?"일시정지":minReady?"최소 확인 완료":`${minimumSeconds-seconds}초 후 다음 단계 가능`}`}</span><strong>{awaitingCandidates?`준비 제한 ${Math.max(0,maximumSeconds-preparationWaitSeconds)}초`: `${remaining}초 남음`}</strong><div><i style={{width:awaitingCandidates?"0%":`${Math.min(100,seconds/minimumSeconds*100)}%`}} /></div></div>}
         </header>
         <div className="study-chat-scroll" key={trial?.id}>
           {!state && <p className="study-chat-notice">연구 상태를 불러오는 중입니다.</p>}
@@ -380,7 +384,7 @@ export function Experiment({ role }: { role: Role }) {
                   <button type="submit" disabled={busy||!draft.trim()}>후보 한 개 요청</button></form>}
               </div>}
               {role==="giver" && item.candidate_builder==="agent" && currentCount===0 && <div className="study-chat-control">
-                <p>Agent가 실시간 쇼핑 검색으로 확인한 상품에서 후보 세 개를 준비합니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
+                <p>Agent가 연구용으로 저장된 상품 자료에서 후보 세 개를 준비합니다. 상품이 표시되면 확인시간이 시작됩니다.</p><button disabled={busy} onClick={()=>{void event("retry",{task:"batch"});void agentTask("batch");}}>후보 준비 다시 시도</button></div>}
               {role==="recipient" && <div className="study-chat-control"><p>연구자가 구성한 대화와 후보를 관찰해 주세요. 화면 속 요청과 클릭은 당신의 행동으로 기록되지 않습니다.</p></div>}
               {role==="giver" && item.candidate_builder==="human" && currentCount===3 &&
                 <div className="study-chat-control"><div className="study-product-grid">{item.candidate_snapshots.map(product=><ProductCard key={product.source_product_id} product={product} onOpen={openProduct} />)}</div></div>}
@@ -422,7 +426,7 @@ export function Experiment({ role }: { role: Role }) {
           {trial?.phase==="locked" && <div className="study-footer-task"><label>연구자에게 받은 전환 코드
             <input type="password" inputMode="numeric" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)} placeholder="코드 입력" /></label>
             <button disabled={busy||!code} onClick={()=>void action("activate",{code})}>조건 {trial.condition} 시작</button></div>}
-          {trial?.phase==="candidates" && <div className="study-footer-task"><span>후보 {currentCount}/3 · 전체 후보 단계 유효 {seconds}/{minimumSeconds}초 이상</span>
+          {trial?.phase==="candidates" && <div className="study-footer-task"><span>{awaitingCandidates?`후보 ${currentCount}/3 · 상품 표시 대기 (표시 후 ${minimumSeconds}초 확인)`:`후보 ${currentCount}/3 · 전체 후보 단계 유효 ${seconds}/${minimumSeconds}초 이상`}</span>
             {role==="giver" && trial.candidate_builder==="human" && trial.proposal &&
               <button disabled={busy} onClick={()=>openCandidateConfirmation(trial.proposal!.product,trial.proposal!.request_key,currentCount+1,trial.id)}>제안된 상품을 후보 {currentCount+1}에 담기</button>}
             <button disabled={busy||!minReady||currentCount!==3} onClick={()=>void action("advance")}>최종 단계로 이동</button></div>}

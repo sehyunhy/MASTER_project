@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { proposeThree, chooseFinal } from "@/lib/study/agent";
-import { searchLiveProducts } from "@/lib/study/live-shopping";
+import { preparedProducts, PREPARED_DATASET_VERSION } from "@/lib/study/prepared-products";
 import { RECIPIENT_SEARCH_PROFILE, RECIPIENT_STIMULUS_VERSION } from "@/lib/study/recipient-context";
 import { recipientStimulusRows } from "@/lib/study/recipient-stimulus";
 
@@ -44,19 +44,12 @@ export async function POST(request:Request) {
     const existing=await rows(db);
     if (parsed.data.action==="prepare") {
       if (existing.length) return NextResponse.json({error:"이미 준비한 관찰 자료가 있습니다. 내용을 확인해 주세요.",...preview(existing)},{status:409});
-      const search=await searchLiveProducts({
-        request:"A birthday gift for an adult friend. The vignette gives no age, gender or specific tastes. Find diverse, generally suitable physical gift products under the study budget; do not assume interests.",
-        profile:RECIPIENT_SEARCH_PROFILE,excludedIds:[],minimum:3,
-      });
-      if (search.products.length<3) throw new Error("RECIPIENT_WEB_PRODUCTS_INCOMPLETE");
-      const selected=await proposeThree({profile:RECIPIENT_SEARCH_PROFILE,condition:"B",products:search.products});
-      const products=selected.value.product_ids.map(productId=>search.products.find(item=>item.source_product_id===productId)!);
+      const available=await preparedProducts(db,RECIPIENT_SEARCH_PROFILE.gift_budget);
+      const selected=await proposeThree({profile:RECIPIENT_SEARCH_PROFILE,condition:"B",products:available});
+      const products=selected.value.product_ids.map(productId=>available.find(item=>item.source_product_id===productId)!);
       const final=await chooseFinal({profile:RECIPIENT_SEARCH_PROFILE,condition:"D",products});
-      const {error:productError}=await db.from("study_products").upsert(products,{onConflict:"source_product_id"});
-      if (productError) throw productError;
       const prepared=recipientStimulusRows({products,finalId:final.value.product_id,
-        evidenceQuotes:selected.value.evidence_quotes,searchModel:search.model,
-        searchResponseId:search.responseIds.join(","),candidateModel:selected.model,
+        evidenceQuotes:selected.value.evidence_quotes,catalogVersion:PREPARED_DATASET_VERSION,candidateModel:selected.model,
         candidateResponseId:selected.responseId,finalModel:final.model,finalResponseId:final.responseId});
       const {error:insertError}=await db.from("study_stimuli").insert(prepared);
       if (insertError) throw insertError;
@@ -78,18 +71,19 @@ export async function POST(request:Request) {
     if (productError) throw productError;
     if (verified?.length!==3 || products.some(snapshot=>{
       const source=verified.find(item=>item.source_product_id===snapshot.source_product_id);
-      return !source?.reviewed || !source.dataset_version.startsWith("live-web-") ||
+      return !source?.reviewed ||
+        !(source.dataset_version===PREPARED_DATASET_VERSION || source.dataset_version.startsWith("live-web-")) ||
         source.price_krw>RECIPIENT_SEARCH_PROFILE.gift_budget ||
         source.name_original!==snapshot.name_original || source.price_krw!==snapshot.price_krw ||
         source.image_url!==snapshot.image_url;
     })) throw new Error("RECIPIENT_STIMULUS_SOURCE_MISMATCH");
     const {error:approvalError}=await db.from("study_stimuli")
-      .update({approved_at:new Date().toISOString(),approved_by:"researcher-reviewed-live-web"})
+      .update({approved_at:new Date().toISOString(),approved_by:"researcher-reviewed"})
       .eq("stimulus_version",RECIPIENT_STIMULUS_VERSION).is("approved_at",null);
     if (approvalError) throw approvalError;
     return NextResponse.json(preview(await rows(db)));
   } catch (cause) {
     console.error("Recipient stimulus preparation failed",{action:parsed.data.action,cause});
-    return NextResponse.json({error:"상품이나 관찰 자료를 준비하지 못했습니다. 판매 페이지와 Claude 검색 설정을 확인해 주세요."},{status:503});
+    return NextResponse.json({error:"상품이나 관찰 자료를 준비하지 못했습니다. 상품 자료와 Claude 설정을 확인해 주세요."},{status:503});
   }
 }

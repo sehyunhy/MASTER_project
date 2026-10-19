@@ -3,6 +3,7 @@ import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
 import { isBroadDelegation, preflightHumanRequest, proposeOne, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
 import { searchLiveProducts } from "@/lib/study/live-shopping";
+import { preparedProducts, PREPARED_DATASET_VERSION } from "@/lib/study/prepared-products";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
 export const maxDuration = 120;
@@ -98,17 +99,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ proposal: saved.data });
     }
     if (body.task === "batch") {
-      const live=await searchLiveProducts({request:`${profile.hobbies.join(", ")}, ${profile.recent_interest}, ${profile.preference}에 맞는 생일 선물 세 가지`,
-        profile,excludedIds:[],minimum:3});
-      const available=live.products;
-      await logStudyEvent(db,{personId,trial,type:"live_product_search",payload:{source:"web_search",
-        mode:"agent_batch",model:live.model,response_id:live.responseId,latency_ms:live.latencyMs,
-        response_ids:live.responseIds,urls_seen:live.urlsSeen,
-        verification:live.verification,
-        verified_product_ids:available.map(item=>item.source_product_id)}});
-      if (available.length<3) throw new Error("LIVE_PRODUCTS_INCOMPLETE");
-      const savedProducts=await db.from("study_products").upsert(available,{onConflict:"source_product_id"});
-      if (savedProducts.error) throw savedProducts.error;
+      const available=await preparedProducts(db,profile.gift_budget,trial.profile_code);
+      await logStudyEvent(db,{personId,trial,type:"prepared_product_pool",payload:{
+        source:"walmart_csv",dataset_version:PREPARED_DATASET_VERSION,
+        product_ids:available.map(item=>item.source_product_id),
+      }});
       const result = await proposeThree({ profile, condition: trial.condition, products: available });
       const evidenceQuotes=Object.fromEntries(result.value.product_ids.map((id,index)=>[id,
         verifiedEvidence(available.find(item=>item.source_product_id===id)!,result.value.evidence_quotes[index])]));
@@ -116,7 +111,7 @@ export async function POST(request: Request) {
         groundedReason(profile,available.find(item=>item.source_product_id===id)!,evidenceQuotes[id])]));
       const saved = await db.rpc("study_store_batch", { p_trial_id: trial.id, p_person_id: personId,
         p_request_key: body.key, p_source_ids: result.value.product_ids, p_reasons: reasons,
-        p_reply: "확인한 상품 정보에서 후보 세 개를 준비했습니다.",
+        p_reply: "연구용 상품 자료에서 후보 세 개를 준비했습니다.",
         p_model: result.model, p_response_id: result.responseId,
         p_latency_ms: Math.round(performance.now()-requestBegan),p_evidence_quotes:evidenceQuotes });
       if (saved.error) throw saved.error;
