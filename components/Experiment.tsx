@@ -277,7 +277,7 @@ export function Experiment({ role }: { role: Role }) {
       || state.trial.candidate_snapshots.length!==3 || state.trial.candidates_visible_at
       || markedVisible.current===state.trial.id) return;
     const displayed=role==="giver" || state.messages.some(message=>message.trial_id===state.trial.id &&
-      message.kind==="candidate_batch" && Number(message.payload?.offset_ms??0)<=seconds*1000);
+      message.kind==="candidate_batch");
     if (!displayed) return;
     markedVisible.current=state.trial.id;
     void action("candidatesVisible");
@@ -469,15 +469,8 @@ export function Experiment({ role }: { role: Role }) {
   };
   const trial=state?.trial;
   const visibleTrials=state?.trials ?? [];
-  const shownMessages=state?.messages.filter(message => {
-    const owner=visibleTrials.find(item=>item.id===message.trial_id);
-    if (!owner) return false;
-    if (owner.id!==trial?.id || role!=="recipient" || ["complete","skipped"].includes(owner.phase)) return true;
-    if (message.phase==="candidates" && trial.phase!=="locked") return true;
-    if (message.phase==="decision" && trial.phase==="candidates") return false;
-    const offset=Number(message.payload?.offset_ms??0);
-    return offset<=seconds*1000 || trial.phase==="survey";
-  }) ?? [];
+  const shownMessages=state?.messages.filter(message =>
+    visibleTrials.some(item=>item.id===message.trial_id)) ?? [];
   useEffect(() => {
     if (!trial || role!=="recipient") return;
     for (const message of shownMessages) {

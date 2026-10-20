@@ -9,13 +9,17 @@ export type PlaybackMessage = {
 export type PlaybackTrial = {
   id: string;
   phase: string;
+  candidate_builder?: "human" | "agent";
+  candidates_visible_at?: string | null;
+  phase_started_at?: string | null;
   timeout_phase?: string | null;
   phase_effective_ms: number;
   candidate_snapshots: { source_product_id: string }[];
 };
 
-/** Only return observations already reached by the server exposure clock. */
-export function visibleRecipientMessages<T extends PlaybackMessage>(messages: T[], trial: PlaybackTrial): T[] {
+/** Reveal the batch after server preparation time; all later messages use effective exposure time. */
+export function visibleRecipientMessages<T extends PlaybackMessage>(messages: T[], trial: PlaybackTrial,
+  nowMs = Date.now()): T[] {
   return messages.filter(message => {
     if (message.trial_id !== trial.id) return true;
     if (trial.phase === "locked") return false;
@@ -25,6 +29,12 @@ export function visibleRecipientMessages<T extends PlaybackMessage>(messages: T[
     if (phase !== "decision" && phase !== "candidates") return false;
     if (message.phase !== "candidates" && message.phase !== "decision") return false;
     if (message.phase === "candidates" && phase === "decision") return true;
+    if (trial.phase === "candidates" && trial.candidate_builder === "agent" &&
+      message.phase === "candidates" && message.kind === "candidate_batch") {
+      if (trial.candidates_visible_at) return true;
+      const startedAt = trial.phase_started_at ? Date.parse(trial.phase_started_at) : NaN;
+      return Number.isFinite(startedAt) && nowMs - startedAt >= Number(message.payload?.offset_ms ?? 0);
+    }
     return Number(message.payload?.offset_ms ?? 0) <= trial.phase_effective_ms;
   });
 }

@@ -127,7 +127,11 @@ export async function POST(request: Request) {
       const phaseOrder=["candidates","decision","survey","complete"];
       if (phaseOrder.indexOf(message.phase)<0 || phaseOrder.indexOf(message.phase)>phaseOrder.indexOf(trial.phase))
         throw new Error("SCRIPTED_PHASE_MISMATCH");
-      if (message.phase===trial.phase && Number(message.payload?.offset_ms??0)>trial.phase_effective_ms)
+      const offsetMs=Number(message.payload?.offset_ms??0);
+      const batchInPreparation=trial.phase==="candidates" && trial.candidate_builder==="agent" &&
+        message.kind==="candidate_batch" && (Boolean(trial.candidates_visible_at) ||
+          Boolean(trial.phase_started_at && Date.now()-Date.parse(trial.phase_started_at)>=offsetMs));
+      if (message.phase===trial.phase && offsetMs>trial.phase_effective_ms && !batchInPreparation)
         throw new Error("SCRIPTED_MESSAGE_NOT_YET_VISIBLE");
       const {error:insertError}=await db.from("study_events").insert({
         person_id:person.id,trial_id:trial.id,role:trial.role,condition:trial.condition,
