@@ -83,7 +83,7 @@ export function verifiedEvidence(product: StudyProduct, quote: string) {
 
 export function groundedReason(profile: StudyProfile, product: StudyProduct, quote: string) {
   verifiedEvidence(product,quote);
-  return `${profile.name}님의 종이 프로필을 참고해 고른 후보입니다. ${productInfoKo(product)}`;
+  return `${profile.name}의 종이 프로필을 참고해 고른 후보입니다. ${productInfoKo(product)}`;
 }
 
 export function isBroadDelegation(text: string) {

@@ -1,12 +1,12 @@
 {
-  "schema_version": "study-profiles-v7",
+  "schema_version": "study-profiles-v8",
   "source_file": "gift_stimuli_relationship_types_v3.original.json",
-  "editorial_note": "Paper profile source for the current study. Historical relationship source remains archived separately.",
+  "editorial_note": "Giver-facing profiles use the shared name 친구 A while retaining each profile code and characteristics. Historical source remains archived separately.",
   "profiles": [
     {
       "id": "R1",
       "profile_code": "R1",
-      "name": "지안",
+      "name": "친구 A",
       "age": 29,
       "hobbies": [
         "피부 관리",
@@ -18,8 +18,8 @@
       "lifestyle_context": "퇴근 후 집에서 쉬면서 피부 관리와 일상 기록을 즐깁니다.",
       "gift_budget": 50000,
       "gift_occasion": "생일",
-      "version": "study-profiles-v7",
-      "participant_text": "지안은 29세 여성입니다. 퇴근 후 집에서 쉬면서 피부 관리와 일상 기록을 즐깁니다. 최근에는 집에서 쓰는 기초 관리 제품을 살펴보고, 간단한 관리 루틴을 유지하는 데 관심이 있습니다.\n\n사용 방법이 간단하고 평소의 관리 과정에 자연스럽게 넣어 쓸 수 있는 제품을 선호합니다. 여러 단계를 거쳐 사용하거나 관리 방법이 복잡한 제품은 선호하지 않습니다.",
+      "version": "study-profiles-v8",
+      "participant_text": "친구 A는 29세 여성입니다. 퇴근 후 집에서 쉬면서 피부 관리와 일상 기록을 즐깁니다. 최근에는 집에서 쓰는 기초 관리 제품을 살펴보고, 간단한 관리 루틴을 유지하는 데 관심이 있습니다.\n\n사용 방법이 간단하고 평소의 관리 과정에 자연스럽게 넣어 쓸 수 있는 제품을 선호합니다. 여러 단계를 거쳐 사용하거나 관리 방법이 복잡한 제품은 선호하지 않습니다.",
       "gender": "여성",
       "source_uuid": "a145c83d49de4b68a070003691610ae8",
       "source_dataset": "nvidia/Nemotron-Personas-Korea",
@@ -31,7 +31,7 @@
     {
       "id": "R2",
       "profile_code": "R2",
-      "name": "윤재",
+      "name": "친구 A",
       "age": 31,
       "hobbies": [
         "독서",
@@ -43,8 +43,8 @@
       "lifestyle_context": "퇴근 후 집에서 책을 읽거나 조용히 쉬는 시간을 즐깁니다.",
       "gift_budget": 50000,
       "gift_occasion": "생일",
-      "version": "study-profiles-v7",
-      "participant_text": "윤재는 31세 남성입니다. 퇴근 후 집에서 책을 읽거나 조용히 쉬는 시간을 즐깁니다. 최근에는 좋아하는 책을 다시 읽고, 집에서 편안하게 휴식하는 데 관심이 있습니다.\n\n촉감이 편안하고 작은 공간에서도 부담 없이 사용할 수 있는 소품을 선호합니다. 눈에 띄는 무늬나 강한 향이 있는 물건은 선호하지 않습니다.",
+      "version": "study-profiles-v8",
+      "participant_text": "친구 A는 31세 남성입니다. 퇴근 후 집에서 책을 읽거나 조용히 쉬는 시간을 즐깁니다. 최근에는 좋아하는 책을 다시 읽고, 집에서 편안하게 휴식하는 데 관심이 있습니다.\n\n촉감이 편안하고 작은 공간에서도 부담 없이 사용할 수 있는 소품을 선호합니다. 눈에 띄는 무늬나 강한 향이 있는 물건은 선호하지 않습니다.",
       "gender": "남성",
       "source_uuid": "093151f05e8943699471e1fc19ff839c",
       "source_dataset": "nvidia/Nemotron-Personas-Korea",
@@ -56,7 +56,7 @@
     {
       "id": "R3",
       "profile_code": "R3",
-      "name": "수빈",
+      "name": "친구 A",
       "age": 27,
       "hobbies": [
         "산책하며 사진 찍기",
@@ -68,8 +68,8 @@
       "lifestyle_context": "주말에는 산책하며 사진을 찍고, 집에서 작은 공간을 꾸미는 시간을 즐깁니다.",
       "gift_budget": 50000,
       "gift_occasion": "생일",
-      "version": "study-profiles-v7",
-      "participant_text": "수빈은 27세 여성입니다. 주말에는 산책하며 사진을 찍고, 집에서 작은 공간을 꾸미는 시간을 즐깁니다. 최근에는 찍은 사진을 정리하고 책상이나 선반을 작은 소품으로 꾸미는 데 관심이 있습니다.\n\n차분한 색상과 단정한 디자인으로 기존 물건들과 자연스럽게 어울리는 소품을 선호합니다. 크기가 지나치게 크거나 장식이 화려한 물건은 선호하지 않습니다.",
+      "version": "study-profiles-v8",
+      "participant_text": "친구 A는 27세 여성입니다. 주말에는 산책하며 사진을 찍고, 집에서 작은 공간을 꾸미는 시간을 즐깁니다. 최근에는 찍은 사진을 정리하고 책상이나 선반을 작은 소품으로 꾸미는 데 관심이 있습니다.\n\n차분한 색상과 단정한 디자인으로 기존 물건들과 자연스럽게 어울리는 소품을 선호합니다. 크기가 지나치게 크거나 장식이 화려한 물건은 선호하지 않습니다.",
       "gender": "여성",
       "source_uuid": "250145caa9b74e4aaf073d559a61614e",
       "source_dataset": "nvidia/Nemotron-Personas-Korea",
@@ -81,7 +81,7 @@
     {
       "id": "R4",
       "profile_code": "R4",
-      "name": "현우",
+      "name": "친구 A",
       "age": 30,
       "hobbies": [
         "집에서 요리하기",
@@ -93,8 +93,8 @@
       "lifestyle_context": "평일 저녁에는 간단한 식사를 준비하고, 주말에는 영상에서 본 레시피를 따라 요리하는 시간을 즐깁니다.",
       "gift_budget": 50000,
       "gift_occasion": "생일",
-      "version": "study-profiles-v7",
-      "participant_text": "현우는 30세 남성입니다. 평일 저녁에는 간단한 식사를 준비하고, 주말에는 영상에서 본 레시피를 따라 요리하는 시간을 즐깁니다. 최근에는 파스타 같은 익숙한 메뉴를 조금씩 바꿔 만들어 보는 데 관심이 있습니다.\n\n보관과 세척이 쉽고 여러 요리에 반복해서 사용할 수 있는 도구를 선호합니다. 한 가지 용도로만 쓰이거나 보관 공간을 많이 차지하는 도구는 선호하지 않습니다.",
+      "version": "study-profiles-v8",
+      "participant_text": "친구 A는 30세 남성입니다. 평일 저녁에는 간단한 식사를 준비하고, 주말에는 영상에서 본 레시피를 따라 요리하는 시간을 즐깁니다. 최근에는 파스타 같은 익숙한 메뉴를 조금씩 바꿔 만들어 보는 데 관심이 있습니다.\n\n보관과 세척이 쉽고 여러 요리에 반복해서 사용할 수 있는 도구를 선호합니다. 한 가지 용도로만 쓰이거나 보관 공간을 많이 차지하는 도구는 선호하지 않습니다.",
       "gender": "남성",
       "source_uuid": "20df908dd5f74569b5d84158c9298a03",
       "source_dataset": "nvidia/Nemotron-Personas-Korea",

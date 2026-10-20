@@ -56,9 +56,9 @@ export function ParticipantStart() {
       </label>
       {validParticipantId(participantNumber.trim(),role) && <p className="study-entry-help">같은 사람의 {role==="giver"?"선물 받는 사람":"선물 주는 사람"} ID: {counterpartId(participantNumber.trim(),role)}</p>}
       <div className="study-entry-divider" />
-      <dl className="study-entry-facts"><div><dt>현재 역할</dt><dd>{roleLabel}</dd></div><div><dt>현재 화면</dt><dd>{screen === "friends" ? "친구 목록" : "선물 받을 사람 프로필"}</dd></div><div><dt>실험 조건</dt><dd>네 조건 모두 체험</dd></div></dl>
+      <dl className="study-entry-facts"><div><dt>현재 역할</dt><dd>{roleLabel}</dd></div><div><dt>현재 화면</dt><dd>{screen === "friends" ? "친구 목록" : "친구 A 프로필"}</dd></div><div><dt>실험 조건</dt><dd>네 조건 모두 체험</dd></div></dl>
       <h2>진행 순서</h2>
-      <ol className="study-entry-steps"><li>{role === "giver" ? "선물 받을 사람" : "친구 A"}을(를) 누르세요.</li><li>{role === "giver" ? "종이 자료를 읽고 선물하기를 누르세요." : "생일 선물 이야기를 읽고 관찰을 시작하세요."}</li><li>배정된 네 조건을 차례로 체험하세요.</li></ol>
+      <ol className="study-entry-steps"><li>친구 A를 누르세요.</li><li>{role === "giver" ? "종이 자료를 읽고 선물하기를 누르세요." : "생일 선물 이야기를 읽고 관찰을 시작하세요."}</li><li>배정된 네 조건을 차례로 체험하세요.</li></ol>
       <p className="study-entry-help">각 조건의 후보 단계와 최종 단계는 각각 유효 체험시간 {MINIMUM_PHASE_MS/1000}–{MAXIMUM_PHASE_MS/1000}초입니다. 설문과 조건 전환 시간은 별도입니다.</p>
       {error && <p className="study-entry-error" role="alert">{error}</p>}
     </aside>
@@ -69,16 +69,16 @@ export function ParticipantStart() {
         {screen === "friends" ? <>
           <header className="study-friends-header"><div><span className="study-me-avatar">나</span><strong>내 프로필</strong></div><span className="study-friends-icons" aria-hidden="true">⌕ ♙ ⚙</span></header>
           <div className="study-friends-tabs"><span className="is-active">친구</span><span>소식</span></div>
-          <div className="study-friends-list"><p>{role === "giver" ? "선물할 사람" : "생일 선물 이야기"}</p><button type="button" className="study-friend-row" onClick={() => setScreen("profile")}><span className="study-friend-avatar">🎂</span><span><strong>{role === "giver" ? "선물 받을 사람" : "친구 A"}</strong><small>{role === "giver" ? "생일 선물을 고르러 가기" : "선물 선택 과정을 관찰하기"}</small></span><span className="study-friend-arrow" aria-hidden="true">›</span></button><p className="study-friend-hint">{role === "giver" ? "종이로 제공된 프로필을 확인한 뒤 진행합니다." : "같은 친구와 같은 생일 선물을 네 가지 방식으로 살펴봅니다."}</p></div>
+          <div className="study-friends-list"><p>{role === "giver" ? "선물할 사람" : "생일 선물 이야기"}</p><button type="button" className="study-friend-row" onClick={() => setScreen("profile")}><span className="study-friend-avatar">🎂</span><span><strong>친구 A</strong><small>{role === "giver" ? "생일 선물을 고르러 가기" : "선물 선택 과정을 관찰하기"}</small></span><span className="study-friend-arrow" aria-hidden="true">›</span></button><p className="study-friend-hint">{role === "giver" ? "종이로 제공된 프로필을 확인한 뒤 진행합니다." : "같은 친구와 같은 생일 선물을 네 가지 방식으로 살펴봅니다."}</p></div>
           <nav className="study-phone-nav" aria-label="화면 장식"><span className="is-active">●</span><span>☷</span><span>◎</span><span>▣</span><span>•••</span></nav>
         </> : <>
-          <header className="study-profile-top"><button type="button" onClick={() => setScreen("friends")} aria-label="친구 목록으로 돌아가기">×</button><span>선물 받을 사람</span><span aria-hidden="true">♧</span></header>
-          <div className="study-profile-center"><div className="study-profile-avatar">🎂</div><h2>{role === "giver" ? "선물 받을 사람" : "친구 A"}</h2><p>{role === "giver" ? "종이 자극물의 인물과 선물 상황을 확인해 주세요." : "오늘은 당신의 생일입니다. 친구 A가 준비한 선물을 살펴보세요."}</p></div>
+          <header className="study-profile-top"><button type="button" onClick={() => setScreen("friends")} aria-label="친구 목록으로 돌아가기">×</button><span>친구 A</span><span aria-hidden="true">♧</span></header>
+          <div className="study-profile-center"><div className="study-profile-avatar">🎂</div><h2>친구 A</h2><p>{role === "giver" ? "종이 자극물의 인물과 선물 상황을 확인해 주세요." : "오늘은 당신의 생일입니다. 친구 A가 준비한 선물을 살펴보세요."}</p></div>
           <div className="study-profile-actions"><button type="button" disabled={busy} onClick={() => void enterExperiment()}><span aria-hidden="true">🎁</span>{busy ? "준비 중…" : role === "giver" ? "선물하기" : "관찰 시작"}</button></div>
           <section className="study-profile-paper"><strong>{role === "giver" ? "연구 안내" : "당신의 생일 선물"}</strong>{role === "giver" ? <p>선물 받을 사람의 정보는 종이 자료를 기준으로 합니다. 앱에서는 실제 상품 후보와 Agent와의 대화를 확인합니다.</p> : <><p className="study-recipient-story">{RECIPIENT_STORY}</p><p>화면 속 친구 A의 선택 과정은 연구자가 구성한 시나리오입니다. 당신의 실제 행동과 구분해 기록합니다.</p></>}</section>
         </>}
       </div></div>
-      <p className="study-demo-caption">{screen === "friends" ? `${role === "giver" ? "선물 받을 사람" : "친구 A"}을(를) 눌러주세요.` : role === "giver" ? "종이 자료를 읽은 뒤 선물하기를 눌러주세요." : "생일 선물 이야기를 읽은 뒤 관찰 시작을 눌러주세요."}</p>
+      <p className="study-demo-caption">{screen === "friends" ? "친구 A를 눌러주세요." : role === "giver" ? "종이 자료를 읽은 뒤 선물하기를 눌러주세요." : "생일 선물 이야기를 읽은 뒤 관찰 시작을 눌러주세요."}</p>
     </section>
   </main>;
 }
