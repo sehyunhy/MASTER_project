@@ -25,6 +25,31 @@ const fixedSpecs: Record<string,string> = {
   "study-fixed:blanket": "단색 담요 1개",
 };
 
+// P02의 세 상품은 가상 자극물이다. 확인된 구성·용도·가격만으로 쓴 추천 이유를
+// 고정하여 네 조건에서 같은 내용을 보여준다.
+const fixedRecommendationReasons: Record<string, readonly [string,string,string]> = {
+  "study-fixed:cup": [
+    "세라믹 머그 2개 세트라 함께 음료를 마시는 장면을 떠올릴 수 있습니다.",
+    "일상에서 사용하는 컵이어서 생일 이후에도 쓰임이 분명합니다.",
+    "32,000원으로 제시된 50,000원 예산 안에서 고를 수 있습니다.",
+  ],
+  "study-fixed:notebook": [
+    "노트 2권과 펜 1개가 한 세트라 바로 기록을 시작할 수 있습니다.",
+    "하루의 생각이나 할 일을 적는 용도로 활용할 수 있습니다.",
+    "28,000원으로 세 후보 중 가격이 가장 낮습니다.",
+  ],
+  "study-fixed:blanket": [
+    "실내에서 무릎에 덮어 쓰는 용도가 분명한 선물입니다.",
+    "단색 담요라 강한 무늬 없이 생활 공간에 둘 수 있습니다.",
+    "42,000원으로 제시된 50,000원 예산에 맞습니다.",
+  ],
+};
+
+export function productRecommendationReasonsKo(product: DisplayProduct): string[] {
+  const reason = productReasonKo(product);
+  return reason.split(/\n+/).map(line => line.replace(/^[•\-]\s*/, "").trim()).filter(Boolean);
+}
+
 export function productCategoryKo(product: DisplayProduct): string {
   return preparedFacts[product.source_product_id]?.category ?? product.category;
 }
@@ -45,6 +70,9 @@ export function productInfoKo(product: DisplayProduct): string {
 
 export function productReasonKo(product: DisplayProduct): string {
   const reason = product.reason?.trim() ?? "";
+  const fixedReasons = fixedRecommendationReasons[product.source_product_id];
+  if (fixedReasons && (!reason || reason === "연구용 가상 상품입니다. 상품 정보와 예시 후기를 확인해 주세요."))
+    return fixedReasons.map(item => `• ${item}`).join("\n");
   // Older snapshots quote the English CSV description. Show its reviewed Korean
   // facts instead, while preserving the full recorded reason in the database.
   if (!reason || preparedFacts[product.source_product_id] && /[A-Za-z]{4,}/.test(reason))

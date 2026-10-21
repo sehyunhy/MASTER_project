@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MAXIMUM_PHASE_MS, MINIMUM_PHASE_MS } from "@/lib/study/config";
 import { beaconStudyTelemetry, captureStudyEvent, flushStudyTelemetry, studyTabId } from "@/lib/study/telemetry-client";
-import { productCategoryKo, productExampleReviewKo, productInfoKo, productReasonKo, productSpecKo } from "@/lib/study/product-display";
+import { productCategoryKo, productExampleReviewKo, productInfoKo, productReasonKo, productRecommendationReasonsKo, productSpecKo } from "@/lib/study/product-display";
 import { useStudyExposure } from "./useStudyExposure";
 
 type Role = "giver" | "recipient";
@@ -522,7 +522,7 @@ export function Experiment({ role }: { role: Role }) {
             <div className="study-chat-divider is-phase">1단계 · 후보 만들기</div>
             {shownMessages.filter(message=>message.trial_id===item.id && message.phase==="candidates").map(message=>
               <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.kind==="candidate_batch"?"is-product-message":""} ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
-                <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b>
+                <b>{message.speaker==="scripted_giver"?"친구 A":message.speaker==="participant"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b>
                 <p>{message.content}</p>
                 {message.kind==="candidate_confirmed" && message.payload?.product &&
                   <p className="study-basket-confirmation">✓ {message.payload.product.name_ko}이(가) 후보에 담겼습니다.</p>}
@@ -570,12 +570,12 @@ export function Experiment({ role }: { role: Role }) {
                   <tr><th>상품 종류</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{productCategoryKo(product)}</td>)}</tr>
                   <tr><th>구성·크기</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}>{productSpecKo(product)}</td>)}</tr>
                   <tr><th>핵심 정보</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}><span className="study-comparison-summary">{productInfoKo(product)}</span></td>)}</tr>
-                  <tr><th>검토 근거</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}><span className="study-comparison-summary">{productReasonKo(product)}</span></td>)}</tr></tbody>
+                  <tr><th>추천 이유</th>{item.candidate_snapshots.map(product=><td key={product.source_product_id}><ul className="study-comparison-reasons">{productRecommendationReasonsKo(product).map((reason,index)=><li key={index}>{reason}</li>)}</ul></td>)}</tr></tbody>
               </table></ObservedComparison><p>확인된 상품 기록만 표시합니다. 상세 설명은 상품 카드를 눌러 확인할 수 있습니다.</p>
             </div>}
             {shownMessages.filter(message=>message.trial_id===item.id && message.phase==="decision").map(message=>
               <ObservedMessage key={message.id} message={message} paused={Boolean(detail)} onExposure={messageExposure(message)} className={`study-bubble ${message.kind==="final_selection" && message.speaker==="agent"?"is-agent-final":""} ${message.speaker==="participant"||message.speaker==="scripted_giver"?"from-giver":"from-agent"}`}>
-                <b>{message.speaker==="participant"||message.speaker==="scripted_giver"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b><p>{message.kind==="final_selection" && message.speaker==="agent"
+                <b>{message.speaker==="scripted_giver"?"친구 A":message.speaker==="participant"?"선물 주는 사람":"Agent"}{message.origin==="scripted"?" · 구성된 시나리오":""}</b><p>{message.kind==="final_selection" && message.speaker==="agent"
                   ? agentReasonForDisplay(item,message.payload?.source_product_id,message.content)
                   : message.content}</p>
               </ObservedMessage>)}

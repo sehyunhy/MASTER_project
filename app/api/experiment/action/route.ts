@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, logStudyEvent } from "@/lib/study/server";
 import { MINIMUM_PHASE_MS } from "@/lib/study/config";
+import { RECIPIENT_STIMULUS_VERSION } from "@/lib/study/recipient-context";
 
 const schema = z.object({
   role: z.enum(["giver", "recipient"]), trialId: z.uuid(), type: z.enum([
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       if (body.role === "recipient" && !trial.stimulus_id) {
         const {data:stimulus,error:stimulusError}=await db.from("study_stimuli")
           .select("id").eq("profile_code",trial.profile_code).eq("condition",trial.condition)
-          .eq("stimulus_version",trial.stimulus_version_target ?? "birthday-friend-a-web-v1")
+          .eq("stimulus_version",trial.stimulus_version_target ?? RECIPIENT_STIMULUS_VERSION)
           .not("approved_at","is",null).maybeSingle();
         if (stimulusError) throw stimulusError;
         if (!stimulus) throw new Error("APPROVED_STIMULUS_MISSING");

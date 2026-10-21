@@ -20,7 +20,20 @@ with candidate_rows as (
     'source_product_id',source_product_id,'name_ko',name_ko,'name_original',name_original,
     'description_original',description_original,'image_url',image_url,'category',category,
     'price_krw',price_krw,'price_original_usd',price_original_usd,'source_url',source_url,
-    'dataset_version',dataset_version,'reason','연구용 가상 상품입니다. 상품 정보와 예시 후기를 확인해 주세요.') order by display_order) as candidates
+    'dataset_version',dataset_version,'reason',case source_product_id
+      when 'study-fixed:cup' then concat_ws(E'\n',
+        '• 세라믹 머그 2개 세트라 함께 음료를 마시는 장면을 떠올릴 수 있습니다.',
+        '• 일상에서 사용하는 컵이어서 생일 이후에도 쓰임이 분명합니다.',
+        '• 32,000원으로 제시된 50,000원 예산 안에서 고를 수 있습니다.')
+      when 'study-fixed:notebook' then concat_ws(E'\n',
+        '• 노트 2권과 펜 1개가 한 세트라 바로 기록을 시작할 수 있습니다.',
+        '• 하루의 생각이나 할 일을 적는 용도로 활용할 수 있습니다.',
+        '• 28,000원으로 세 후보 중 가격이 가장 낮습니다.')
+      when 'study-fixed:blanket' then concat_ws(E'\n',
+        '• 실내에서 무릎에 덮어 쓰는 용도가 분명한 선물입니다.',
+        '• 단색 담요라 강한 무늬 없이 생활 공간에 둘 수 있습니다.',
+        '• 42,000원으로 제시된 50,000원 예산에 맞습니다.')
+      end) order by display_order) as candidates
   from candidate_rows
 ), scenes as (
   select profile_code,condition,fixed.candidates,
