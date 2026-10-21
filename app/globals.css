@@ -135,6 +135,7 @@ button, input { font: inherit; }
 .study-detail{position:relative;width:min(100%,600px);max-height:90svh;overflow:auto;padding:24px;background:#fff;border-radius:22px}
 .study-detail>img{display:block;max-width:100%;max-height:230px;margin:0 auto;object-fit:contain}
 .study-detail h2{font-size:22px}.study-detail p{line-height:1.65;white-space:pre-wrap}.study-detail small{display:block;margin-top:15px;color:#647e9b}
+.study-detail-reasons{margin:8px 0 20px;padding-left:24px;line-height:1.6}.study-detail-reasons li+li{margin-top:9px}.study-example-review{padding:16px 18px;border-radius:12px;background:#f1f6fc;color:#284b70}
 .study-original-details{margin-top:18px;padding:12px 15px;border:1px solid #d7e4f3;border-radius:10px;color:#395b7d}.study-original-details summary{cursor:pointer;font-weight:700}.study-original-details p{font-size:14px;overflow-wrap:break-word}
 .study-detail-close{float:right;border:0;border-radius:9px;background:#e9f1fb;padding:9px 13px;cursor:pointer}
 .study-confirm-overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:18px;background:#142538ad}

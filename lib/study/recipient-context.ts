@@ -1,6 +1,6 @@
 import type { StudyProfile } from "@/lib/study/agent";
 
-export const RECIPIENT_STIMULUS_VERSION = "birthday-friend-a-dialogue-v3";
+export const RECIPIENT_STIMULUS_VERSION = "birthday-friend-a-reviews-v4";
 
 export const RECIPIENT_STORY = [
   "당신에게는 친구 A라는 친구가 있습니다.",

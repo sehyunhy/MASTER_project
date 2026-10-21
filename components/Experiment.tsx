@@ -7,7 +7,8 @@ import { useStudyExposure } from "./useStudyExposure";
 
 type Role = "giver" | "recipient";
 type Product = { source_product_id: string; name_ko: string; name_original: string; description_original: string;
-  image_url: string; price_krw: number; price_original_usd?: number; category: string; reason?: string; source_url?: string | null };
+  image_url: string; price_krw: number; price_original_usd?: number; category: string; reason?: string;
+  example_review_display?: string; source_url?: string | null };
 type Trial = { id: string; role: Role; condition: "A"|"B"|"C"|"D"; order_position: number;
   profile_code: string;
   candidate_builder: "human"|"agent"; decision_actor: "human"|"agent"; phase: string; phase_effective_ms: number;
@@ -663,8 +664,10 @@ export function Experiment({ role }: { role: Role }) {
         {detail.image_url && <img src={detail.image_url} alt="" />}
         <h2>{detail.name_ko}</h2><strong>{Number(detail.price_krw).toLocaleString()}원</strong>
         <h3>상품 정보</h3><p>{productInfoKo(detail)}</p>
-        {detail.reason && <><h3>추천 이유</h3><p>{productReasonKo(detail)}</p></>}
-        {productExampleReviewKo(detail) && <><h3>연구용 예시 후기</h3><p>{productExampleReviewKo(detail)} (실제 구매 후기 아님)</p></>}
+        {(detail.reason || detail.source_product_id.startsWith("study-fixed:")) && <><h3>추천 이유</h3>
+          <ul className="study-detail-reasons">{productRecommendationReasonsKo(detail).map((reason,index)=><li key={index}>{reason}</li>)}</ul></>}
+        {productExampleReviewKo(detail) && <><h3>사용 후기 예시</h3><p className="study-example-review">“{productExampleReviewKo(detail)}”</p>
+          <small>연구자가 작성한 예시 문장입니다. 실제 구매자가 남긴 후기는 아닙니다.</small></>}
         {!detail.source_product_id.startsWith("study-") && <details className="study-original-details"><summary>원문 상품 정보 보기</summary><p>{detail.name_original}</p><p>{detail.description_original}</p></details>}
         {detail.source_url && <a href={detail.source_url} target="_blank" rel="noreferrer"
           onClick={()=>void event("external_product_link_opened",{surface:"product_detail"},

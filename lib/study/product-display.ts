@@ -3,6 +3,7 @@ type DisplayProduct = {
   category: string;
   description_original: string;
   reason?: string;
+  example_review_display?: string;
 };
 
 // These summaries restate the nine reviewed rows in study-prepared-nine.sql.
@@ -45,6 +46,12 @@ const fixedRecommendationReasons: Record<string, readonly [string,string,string]
   ],
 };
 
+const fixedExampleReviews: Record<string,string> = {
+  "study-fixed:cup": "머그가 두 개라 집에 친구가 왔을 때 같이 꺼내 쓰기 좋았어요. 색이 차분해서 식탁 위에 두어도 잘 어울리고, 손잡이도 편해서 아침마다 쓰게 됩니다.",
+  "study-fixed:notebook": "책상에 두고 하루에 몇 줄씩 적고 있어요. 종이가 부드러워 쓰기 편하고, 두 권이라 한 권은 일기용, 다른 한 권은 메모용으로 나눠 쓰기 좋았습니다.",
+  "study-fixed:blanket": "집에서 책 읽을 때 무릎에 덮고 있어요. 필요할 때 가볍게 꺼내 쓰기 좋고, 단색이라 소파 옆에 두어도 눈에 거슬리지 않았어요.",
+};
+
 export function productRecommendationReasonsKo(product: DisplayProduct): string[] {
   const reason = productReasonKo(product);
   return reason.split(/\n+/).map(line => line.replace(/^[•\-]\s*/, "").trim()).filter(Boolean);
@@ -81,5 +88,7 @@ export function productReasonKo(product: DisplayProduct): string {
 }
 
 export function productExampleReviewKo(product: DisplayProduct): string | null {
+  if (product.source_product_id in fixedExampleReviews)
+    return product.example_review_display?.trim() || fixedExampleReviews[product.source_product_id];
   return product.description_original.split("연구용 예시 후기(실제 구매 후기 아님):")[1]?.trim() ?? null;
 }

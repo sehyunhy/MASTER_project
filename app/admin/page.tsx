@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
+import { productExampleReviewKo, productInfoKo, productRecommendationReasonsKo } from "@/lib/study/product-display";
 const exports=["study_people","study_trials","study_messages","study_events","study_metrics","study_products","study_stimuli","study_survey_responses"];
-type PreparedProduct={source_product_id:string;name_ko:string;name_original:string;price_krw:number;image_url:string;source_url:string|null;description_original:string};
+type PreparedProduct={source_product_id:string;name_ko:string;name_original:string;price_krw:number;image_url:string;source_url:string|null;description_original:string;category:string;reason?:string;example_review_display?:string};
 type StimulusPreview={version:string;count:number;approved:boolean;candidates:PreparedProduct[];finalProductId:string|null;
   scripts:{condition:string;messages:{phase:string;speaker:string;kind:string;content:string;offset_ms:number}[]}[]};
 export default function AdminPage() {
@@ -75,7 +76,9 @@ export default function AdminPage() {
         <strong>후보 {index+1}{product.source_product_id===stimulus.finalProductId?" · 최종 선물":""}</strong>
         <img src={product.image_url} alt={product.name_ko} loading="lazy" />
         <h3>{product.name_ko}</h3><p>{product.price_krw.toLocaleString()}원 · 연구용 환산 가격</p>
-        <p>{product.description_original}</p>{product.source_url&&<a href={product.source_url} target="_blank" rel="noopener noreferrer">원본 상품 페이지</a>}
+        <p>{productInfoKo(product)}</p>{product.source_url&&<a href={product.source_url} target="_blank" rel="noopener noreferrer">원본 상품 페이지</a>}
+        <h4>추천 이유</h4><ul>{productRecommendationReasonsKo(product).map((reason,index)=><li key={index}>{reason}</li>)}</ul>
+        {productExampleReviewKo(product)&&<><h4>연구용 예시 후기</h4><p>“{productExampleReviewKo(product)}”</p></>}
       </article>)}</div>}
       {!!stimulus?.scripts.length&&<div className="study-admin-scripts"><h3>조건별 구성 대화 검토</h3>
         {stimulus.scripts.map(script=><details key={script.condition}><summary>조건 {script.condition} · {script.messages.length}개 메시지</summary>
