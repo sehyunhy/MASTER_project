@@ -52,8 +52,8 @@ export async function POST(request:Request) {
     const finalId=existing[0].final_product_id;
     const products=existing[0].candidate_snapshots as {source_product_id:string;name_original:string;price_krw:number;image_url:string;dataset_version:string}[];
     if (products.length!==3 || products.map(item=>item.source_product_id).join(",")!==
-      "study-fixed:cup,study-fixed:notebook,study-fixed:blanket" ||
-      finalId!=="study-fixed:cup" ||
+      "study-fixed:v5-mug,study-fixed:v5-diary,study-fixed:v5-blanket" ||
+      finalId!=="study-fixed:v5-mug" ||
       !products.some(item=>item.source_product_id===finalId) ||
       existing.some(item=>!expected.delete(`${item.profile_code}:${item.condition}`) ||
         JSON.stringify(item.candidate_snapshots)!==baseline || item.final_product_id!==finalId) || expected.size)

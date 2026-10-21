@@ -2,13 +2,13 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import type { StudyProduct } from "@/lib/study/agent";
 
 export const PREPARED_DATASET_VERSION = "walmart-csv-2024-08-study-nine-v1";
-export const FIXED_STUDY_DATASET_VERSION = "study-simulated-fixed-v1";
+export const FIXED_STUDY_DATASET_VERSION = "study-simulated-fixed-v5";
 
 const SOURCE_IDS = [
   "3440558193", "2010024322", "1093743201", "1097677016", "973604797",
   "3511393855", "10308385", "36995775", "14123516",
 ].map(id => `walmart-csv:${id}`);
-const FIXED_IDS = ["study-fixed:cup","study-fixed:notebook","study-fixed:blanket"];
+const FIXED_IDS = ["study-fixed:v5-mug","study-fixed:v5-diary","study-fixed:v5-blanket"];
 
 export type PreparedStudyProduct = StudyProduct & {
   dataset_version: string; profile_codes: string[]; image_url: string;

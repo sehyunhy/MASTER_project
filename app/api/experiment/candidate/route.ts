@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { studySession, trialFor, profileFor, logStudyEvent } from "@/lib/study/server";
 import { isBroadDelegation, preflightHumanRequest, createStudyProduct, proposeThree, chooseFinal, groundedReason, verifiedEvidence, type StudyProduct } from "@/lib/study/agent";
-import { preparedProducts, PREPARED_DATASET_VERSION } from "@/lib/study/prepared-products";
+import { preparedProducts, PREPARED_DATASET_VERSION, FIXED_STUDY_DATASET_VERSION } from "@/lib/study/prepared-products";
 import { simulatedProductImage } from "@/lib/study/simulated-image";
 import { STUDY_PROMPT_VERSION } from "@/lib/study/config";
 
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     if (body.task === "batch") {
       const available=await preparedProducts(db,profile.gift_budget,trial.profile_code);
       await logStudyEvent(db,{personId,trial,actor:"system",origin:"system",type:"prepared_product_pool",payload:{
-        source:"walmart_csv",dataset_version:PREPARED_DATASET_VERSION,
+        source:"reviewed_catalog",dataset_versions:[PREPARED_DATASET_VERSION,FIXED_STUDY_DATASET_VERSION],
         product_ids:available.map(item=>item.source_product_id),
       }});
       const result = await proposeThree({ profile, condition: trial.condition, products: available });

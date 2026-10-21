@@ -21,6 +21,9 @@ const preparedFacts: Record<string, { category: string; spec: string; info: stri
 };
 
 const fixedSpecs: Record<string,string> = {
+  "study-fixed:v5-mug": "파란색 무늬 세라믹 머그컵 2개",
+  "study-fixed:v5-diary": "연보라색 다이어리 1권·펜 1개",
+  "study-fixed:v5-blanket": "주황색 체크무늬 무릎담요 1개",
   "study-fixed:cup": "세라믹 머그 2개",
   "study-fixed:notebook": "노트 2권·펜 1개",
   "study-fixed:blanket": "단색 담요 1개",
@@ -29,6 +32,21 @@ const fixedSpecs: Record<string,string> = {
 // P02의 세 상품은 가상 자극물이다. 확인된 구성·용도·가격만으로 쓴 추천 이유를
 // 고정하여 네 조건에서 같은 내용을 보여준다.
 const fixedRecommendationReasons: Record<string, readonly [string,string,string]> = {
+  "study-fixed:v5-mug": [
+    "서로 다른 파란색 무늬의 머그컵 두 개가 한 세트입니다.",
+    "두 사람이 음료를 마실 때 함께 사용할 수 있습니다.",
+    "32,000원으로 50,000원 예산 안에 들어갑니다.",
+  ],
+  "study-fixed:v5-diary": [
+    "다이어리와 펜이 함께 있어 바로 기록을 시작할 수 있습니다.",
+    "일정이나 하루의 생각을 적는 데 쓸 수 있습니다.",
+    "28,000원으로 세 후보 중 가격이 가장 낮습니다.",
+  ],
+  "study-fixed:v5-blanket": [
+    "집에서 쉬거나 책을 읽을 때 무릎에 덮을 수 있습니다.",
+    "주황색 체크무늬가 눈에 띄는 선물입니다.",
+    "42,000원으로 50,000원 예산 안에 들어갑니다.",
+  ],
   "study-fixed:cup": [
     "세라믹 머그 2개 세트라 함께 음료를 마시는 장면을 떠올릴 수 있습니다.",
     "일상에서 사용하는 컵이어서 생일 이후에도 쓰임이 분명합니다.",
@@ -47,6 +65,9 @@ const fixedRecommendationReasons: Record<string, readonly [string,string,string]
 };
 
 const fixedExampleReviews: Record<string,string> = {
+  "study-fixed:v5-mug": "컵 두 개를 번갈아 쓰고 있어요. 친구가 왔을 때 같은 세트로 음료를 낼 수 있고, 파란 무늬가 서로 달라 각자 컵을 구분하기도 편해요.",
+  "study-fixed:v5-diary": "펜이 같이 들어 있어서 받자마자 일정부터 적었어요. 다이어리는 가방에 넣고 다니며 짧게 메모하기 좋았어요.",
+  "study-fixed:v5-blanket": "소파에 앉아 있을 때 무릎에 덮어 쓰고 있어요. 주황색 체크무늬가 선명해서 방에 두었을 때도 눈에 잘 띄어요.",
   "study-fixed:cup": "머그가 두 개라 집에 친구가 왔을 때 같이 꺼내 쓰기 좋았어요. 색이 차분해서 식탁 위에 두어도 잘 어울리고, 손잡이도 편해서 아침마다 쓰게 됩니다.",
   "study-fixed:notebook": "책상에 두고 하루에 몇 줄씩 적고 있어요. 종이가 부드러워 쓰기 편하고, 두 권이라 한 권은 일기용, 다른 한 권은 메모용으로 나눠 쓰기 좋았습니다.",
   "study-fixed:blanket": "집에서 책 읽을 때 무릎에 덮고 있어요. 필요할 때 가볍게 꺼내 쓰기 좋고, 단색이라 소파 옆에 두어도 눈에 거슬리지 않았어요.",
