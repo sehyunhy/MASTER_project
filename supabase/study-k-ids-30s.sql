@@ -110,7 +110,7 @@ declare t public.study_trials%rowtype; now_at timestamptz:=clock_timestamp(); ne
 begin
   select * into t from public.study_trials where id=p_trial_id and person_id=p_person_id for update;
   if t.id is null or t.phase not in ('candidates','decision') then raise exception 'PHASE_NOT_ACTIVE'; end if;
-  if t.phase_effective_ms<30000 then raise exception 'MINIMUM_EXPOSURE_REQUIRED'; end if;
+  if t.phase_effective_ms<10000 then raise exception 'MINIMUM_EXPOSURE_REQUIRED'; end if;
   if t.phase='candidates' then
     if jsonb_array_length(t.candidate_snapshots)<>3 then raise exception 'THREE_CANDIDATES_REQUIRED'; end if;
     next_phase:='decision';
