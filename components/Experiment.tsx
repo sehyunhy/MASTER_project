@@ -356,7 +356,7 @@ export function Experiment({ role }: { role: Role }) {
       } catch {}
     };
     ping();
-    const interval=setInterval(ping,3000);
+    const interval=setInterval(ping,1000);
     const visibility=() => {
       void event(document.visibilityState==="visible"?"tab_visible":"tab_hidden");
       if(document.visibilityState==="hidden")beaconStudyTelemetry();
